@@ -16,8 +16,12 @@ export default function Accueil() {
         router.replace("/connexion");
         return;
       }
-      const firstName = data.user.user_metadata?.first_name as string | undefined;
-      setName(firstName || data.user.email || "");
+      const meta = data.user.user_metadata ?? {};
+      const first = meta.first_name as string | undefined;
+      const last = meta.last_name as string | undefined;
+      const google = (meta.full_name ?? meta.name) as string | undefined;
+      const display = first ? [first, last].filter(Boolean).join(" ") : google;
+      setName(display || data.user.email || "");
       setReady(true);
     });
   }, [router]);

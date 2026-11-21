@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createClient } from "../lib/supabase/client";
 
 // Mettre false pour cacher le bouton Apple tant qu'on n'a pas le compte développeur Apple
 const showApple = true;
@@ -8,15 +9,27 @@ const showApple = true;
 export default function SocialButtons() {
   const [message, setMessage] = useState("");
 
-  function soon(name: string) {
-    setMessage(`La connexion avec ${name} sera activée quand on branchera Supabase.`);
+  async function signInWithGoogle() {
+    setMessage("");
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+    if (error) {
+      setMessage("Impossible de lancer la connexion avec Google. Réessaie dans un instant.");
+    }
+  }
+
+  function appleSoon() {
+    setMessage("La connexion avec Apple sera activée plus tard.");
   }
 
   return (
     <div className="flex flex-col gap-3">
       <button
         type="button"
-        onClick={() => soon("Google")}
+        onClick={signInWithGoogle}
         className="flex items-center justify-center gap-3 rounded-2xl bg-white py-3.5 text-base font-bold text-black"
       >
         <svg viewBox="0 0 48 48" className="h-5 w-5" aria-hidden="true">
@@ -31,7 +44,7 @@ export default function SocialButtons() {
       {showApple && (
         <button
           type="button"
-          onClick={() => soon("Apple")}
+          onClick={appleSoon}
           className="flex items-center justify-center gap-3 rounded-2xl border border-white/70 bg-black py-3.5 text-base font-bold text-white"
         >
           <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden="true">

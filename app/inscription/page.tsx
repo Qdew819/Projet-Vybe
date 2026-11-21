@@ -11,6 +11,7 @@ type Status = { type: "error" | "info"; text: string } | null;
 export default function Inscription() {
   const router = useRouter();
   const [name, setName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<Status>(null);
@@ -25,7 +26,7 @@ export default function Inscription() {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { first_name: name } },
+      options: { data: { first_name: name, last_name: lastName } }
     });
 
     setLoading(false);
@@ -80,6 +81,22 @@ export default function Inscription() {
               placeholder="Ton prénom"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              className={fieldClass}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="lastName" className="mb-1.5 block text-sm font-semibold">
+              Nom de famille
+            </label>
+            <input
+              id="lastName"
+              type="text"
+              required
+              autoComplete="family-name"
+              placeholder="Ton nom de famille"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
               className={fieldClass}
             />
           </div>
