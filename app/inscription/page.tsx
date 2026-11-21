@@ -1,18 +1,53 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import SocialButtons from "../../components/SocialButtons";
+import { createClient } from "../../lib/supabase/client";
+
+type Status = { type: "error" | "info"; text: string } | null;
 
 export default function Inscription() {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState<Status>(null);
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setMessage("La création de compte sera activée à la prochaine étape, quand on branchera Supabase.");
+    setLoading(true);
+    setStatus(null);
+
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { first_name: name } },
+    });
+
+    setLoading(false);
+
+    if (error) {
+      const text = error.message.toLowerCase().includes("already")
+        ? "Un compte existe déjà avec ce courriel. Essaie de te connecter."
+        : "Impossible de créer le compte pour l’instant. Vérifie ton courriel et ton mot de passe, puis réessaie.";
+      setStatus({ type: "error", text });
+      return;
+    }
+
+    // Si Supabase ne demande pas de confirmation, la personne est déjà connectée
+    if (data.session) {
+      router.push("/accueil");
+      return;
+    }
+
+    setStatus({
+      type: "info",
+      text: "Compte créé! Va dans ta boîte courriel et clique sur le lien pour confirmer ton adresse, puis reviens te connecter.",
+    });
   }
 
   const fieldClass =
@@ -87,13 +122,20 @@ export default function Inscription() {
             <span>J’ai 16 ans ou plus et j’accepte les conditions d’utilisation et la politique de confidentialité.</span>
           </label>
 
-          <button type="submit" className="mt-2 rounded-2xl bg-[#39ff14] py-4 text-base font-bold text-black">
-            Créer mon compte
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-2 rounded-2xl bg-[#39ff14] py-4 text-base font-bold text-black disabled:opacity-60"
+          >
+            {loading ? "Création en cours…" : "Créer mon compte"}
           </button>
 
-          {message && (
-            <p aria-live="polite" className="text-sm text-neutral-300">
-              {message}
+          {status && (
+            <p
+              aria-live="polite"
+              className={`text-sm ${status.type === "error" ? "text-red-400" : "text-[#39ff14]"}`}
+            >
+              {status.text}
             </p>
           )}
         </form>

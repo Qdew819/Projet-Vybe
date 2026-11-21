@@ -1,16 +1,39 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import SocialButtons from "../../components/SocialButtons";
+import { createClient } from "../../lib/supabase/client";
 
 export default function Connexion() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setMessage("La connexion sera activée à la prochaine étape, quand on branchera Supabase.");
+    setLoading(true);
+    setError("");
+
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    setLoading(false);
+
+    if (error) {
+      const msg = error.message.toLowerCase();
+      setError(
+        msg.includes("not confirmed")
+          ? "Confirme d’abord ton adresse : clique sur le lien reçu par courriel."
+          : "Courriel ou mot de passe incorrect."
+      );
+      return;
+    }
+
+    router.push("/accueil");
   }
 
   const fieldClass =
@@ -26,7 +49,11 @@ export default function Connexion() {
         <h1 className="mt-10 text-4xl font-black italic tracking-tight">Content de te revoir</h1>
         <p className="mt-2 text-sm text-neutral-400">Connecte-toi pour retrouver ta communauté.</p>
 
-        <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4">
+        <div className="mt-8">
+          <SocialButtons />
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
           <div>
             <label htmlFor="email" className="mb-1.5 block text-sm font-semibold">
               Courriel
@@ -59,13 +86,17 @@ export default function Connexion() {
             />
           </div>
 
-          <button type="submit" className="mt-2 rounded-2xl bg-[#39ff14] py-4 text-base font-bold text-black">
-            Se connecter
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-2 rounded-2xl bg-[#39ff14] py-4 text-base font-bold text-black disabled:opacity-60"
+          >
+            {loading ? "Connexion…" : "Se connecter"}
           </button>
 
-          {message && (
-            <p aria-live="polite" className="text-sm text-neutral-300">
-              {message}
+          {error && (
+            <p aria-live="polite" className="text-sm text-red-400">
+              {error}
             </p>
           )}
         </form>
