@@ -4,8 +4,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AccountTypePicker, { type AccountType } from "../../components/AccountTypePicker";
+import UsernameField from "../../components/UsernameField";
 import { useT } from "../../lib/i18n";
-import { BIO_MAX } from "../../lib/profile";
+import { BIO_MAX, UNIQUE_VIOLATION, isValidUsername } from "../../lib/profile";
 import { createClient } from "../../lib/supabase/client";
 
 export default function Parametres() {
@@ -16,6 +17,8 @@ export default function Parametres() {
   // Valeurs enregistrées dans la base, pour savoir si quelque chose a changé
   const [savedType, setSavedType] = useState<AccountType>("public");
   const [savedBio, setSavedBio] = useState("");
+  const [savedUsername, setSavedUsername] = useState("");
+  const [username, setUsername] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("public");
   const [bio, setBio] = useState("");
   const [saving, setSaving] = useState(false);
@@ -32,7 +35,7 @@ export default function Parametres() {
       }
       const { data: profile, error } = await supabase
         .from("profiles")
-        .select("is_private, bio")
+        .select("username, is_private, bio")
         .eq("id", data.user.id)
         .maybeSingle();
       if (error) {
@@ -48,7 +51,10 @@ export default function Parametres() {
       }
       const currentType: AccountType = profile.is_private ? "private" : "public";
       const currentBio = typeof profile.bio === "string" ? profile.bio : "";
+      const currentUsername = typeof profile.username === "string" ? profile.username : "";
       setUserId(data.user.id);
+      setSavedUsername(currentUsername);
+      setUsername(currentUsername);
       setSavedType(currentType);
       setAccountType(currentType);
       setSavedBio(currentBio);
@@ -70,20 +76,25 @@ export default function Parametres() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSaving(true);
     clearMessages();
+    if (!isValidUsername(username)) {
+      setError(t("profile.errorUsername"));
+      return;
+    }
+    setSaving(true);
 
     const newBio = bio.trim();
     const { error } = await createClient()
       .from("profiles")
-      .update({ is_private: accountType === "private", bio: newBio || null })
+      .update({ username, is_private: accountType === "private", bio: newBio || null })
       .eq("id", userId);
     setSaving(false);
     if (error) {
       console.error(`Enregistrement des paramètres impossible : ${error.message} (code ${error.code})`);
-      setError(t("settings.saveError"));
+      setError(error.code === UNIQUE_VIOLATION ? t("profile.errorUsernameTaken") : t("settings.saveError"));
       return;
     }
+    setSavedUsername(username);
     setSavedType(accountType);
     setSavedBio(newBio);
     setBio(newBio);
@@ -96,7 +107,7 @@ export default function Parametres() {
     );
   }
 
-  const unchanged = accountType === savedType && bio.trim() === savedBio;
+  const unchanged = username === savedUsername && accountType === savedType && bio.trim() === savedBio;
 
   return (
     <main className="bg-background text-foreground">
@@ -110,6 +121,16 @@ export default function Parametres() {
         {userId && (
           <>
             <div className="mt-10">
+              <UsernameField
+                value={username}
+                onChange={(value) => {
+                  setUsername(value);
+                  clearMessages();
+                }}
+              />
+            </div>
+
+            <div className="mt-6">
               <label htmlFor="bio" className="mb-1.5 block text-sm font-semibold">
                 {t("profile.bio")}
               </label>

@@ -4,13 +4,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import AccountTypePicker, { type AccountType } from "../../../components/AccountTypePicker";
 import { useT } from "../../../lib/i18n";
-import { BIO_MAX } from "../../../lib/profile";
+import UsernameField from "../../../components/UsernameField";
+import { BIO_MAX, UNIQUE_VIOLATION, isValidUsername } from "../../../lib/profile";
 import { createClient } from "../../../lib/supabase/client";
 
-const USERNAME_MIN = 3;
-const USERNAME_MAX = 20;
-// Lettres minuscules sans accent, chiffres, points et tirets bas
-const USERNAME_PATTERN = /^[a-z0-9._]+$/;
 const MIN_AGE = 16; // même âge minimum que l'inscription
 const ADULT_AGE = 18;
 
@@ -65,7 +62,7 @@ export default function CreerProfil() {
     e.preventDefault();
     setError("");
 
-    if (username.length < USERNAME_MIN || !USERNAME_PATTERN.test(username)) {
+    if (!isValidUsername(username)) {
       setError(t("profile.errorUsername"));
       return;
     }
@@ -111,8 +108,7 @@ export default function CreerProfil() {
           (error.hint ? ` — ${error.hint}` : "")
       );
       setSaving(false);
-      // 23505 : valeur déjà utilisée (nom d'utilisateur unique)
-      setError(error.code === "23505" ? t("profile.errorUsernameTaken") : t("profile.saveError"));
+      setError(error.code === UNIQUE_VIOLATION ? t("profile.errorUsernameTaken") : t("profile.saveError"));
       return;
     }
     router.push("/accueil");
@@ -136,36 +132,7 @@ export default function CreerProfil() {
         <p className="mt-2 text-sm text-muted">{t("profile.subtitle")}</p>
 
         <div className="mt-10">
-          <label htmlFor="username" className="mb-1.5 block text-sm font-semibold">
-            {t("profile.username")}
-          </label>
-          <div className="relative">
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-base text-muted"
-            >
-              @
-            </span>
-            <input
-              id="username"
-              type="text"
-              required
-              autoComplete="username"
-              autoCapitalize="none"
-              spellCheck={false}
-              minLength={USERNAME_MIN}
-              maxLength={USERNAME_MAX}
-              placeholder={t("profile.usernamePlaceholder")}
-              value={username}
-              // On tape en minuscules : les majuscules sont converties, les espaces retirés
-              onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s/g, ""))}
-              aria-describedby="username-hint"
-              className={`${fieldClass} pl-9`}
-            />
-          </div>
-          <p id="username-hint" className="mt-1.5 text-xs text-muted">
-            {t("profile.usernameHint")}
-          </p>
+          <UsernameField value={username} onChange={setUsername} />
         </div>
 
         <div className="mt-6">
