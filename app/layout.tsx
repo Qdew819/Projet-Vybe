@@ -1,17 +1,15 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { languageInitScript } from "../lib/language";
 import { themeInitScript } from "../lib/theme";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+// Seule police de Vybe, pour tous les textes (comme sur la maquette). Montserrat est une police « variable » :
+// toutes les graisses sont incluses, on ajoute seulement l'italique pour les titres.
+const appFont = Montserrat({
+  variable: "--font-app",
+  subsets: ["latin", "latin-ext"],
+  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
@@ -25,7 +23,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="fr"
       data-theme="dark"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${appFont.variable} h-full antialiased`}
     >
       <head>
         {/* Applique le thème sauvegardé avant l'affichage, pour éviter un flash */}

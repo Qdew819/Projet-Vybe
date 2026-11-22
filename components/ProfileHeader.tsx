@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import { useT } from "../lib/i18n";
 
 // Haut du profil :
-// - 1re ligne : photo à gauche, nom en gras, @nom d'utilisateur et bio dessous, bouton « Modifier nom profil » à droite
-// - dessous : statistiques (si fournies)
+// - 1re ligne : photo à gauche, nom en gras et @nom d'utilisateur dessous, bouton « Modifier nom profil » à droite
+// - dessous : la bio sur toute la largeur, puis les statistiques (si fournies)
 export default function ProfileHeader({
   displayName,
   username,
@@ -29,7 +29,6 @@ export default function ProfileHeader({
         <div className="min-w-0 flex-1">
           <p className="truncate text-lg font-bold leading-tight">{displayName || username}</p>
           <p className="truncate text-sm text-muted">{username ? `@${username}` : t("profile.usernameEmpty")}</p>
-          {bio && <p className="mt-1.5 whitespace-pre-line break-words text-sm leading-snug">{bio}</p>}
         </div>
         <button
           type="button"
@@ -53,6 +52,9 @@ export default function ProfileHeader({
           {t("profile.editUsername")}
         </button>
       </div>
+
+      {/* Bio sous la photo, sur toute la largeur */}
+      {bio && <p className="whitespace-pre-line break-words text-sm leading-snug">{bio}</p>}
 
       {stats}
     </div>

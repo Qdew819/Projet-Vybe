@@ -46,12 +46,25 @@
   --color-on-accent: var(--on-accent);
   --color-accent-ink: var(--accent-ink);
   --color-danger: var(--danger);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-app);
+  --font-mono: var(--font-app); /* même police partout, y compris font-mono */
+}
+
+html,
+body {
+  font-family: var(--font-app), Arial, Helvetica, sans-serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Champs, boutons et fenêtres prennent aussi Montserrat (les navigateurs leur donnent parfois leur propre police) */
+button,
+input,
+select,
+textarea,
+dialog {
+  font-family: inherit;
 }
