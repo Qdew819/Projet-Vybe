@@ -111,6 +111,10 @@ const fr = {
   "home.settings": "Paramètres",
 
   "settings.title": "Paramètres",
+
+  "stats.posts": "Publications",
+  "stats.followers": "Abonnés",
+  "stats.following": "Abonnements",
   "settings.save": "Enregistrer",
   "settings.saved": "C’est enregistré.",
   "settings.saveError": "Impossible d’enregistrer tes modifications pour l’instant. Réessaie dans un instant.",
@@ -255,6 +259,10 @@ const en: Messages = {
   "home.settings": "Settings",
 
   "settings.title": "Settings",
+
+  "stats.posts": "Posts",
+  "stats.followers": "Followers",
+  "stats.following": "Following",
   "settings.save": "Save",
   "settings.saved": "Saved.",
   "settings.saveError": "Couldn’t save your changes right now. Try again in a moment.",

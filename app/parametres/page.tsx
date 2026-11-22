@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import AccountTypePicker, { type AccountType } from "../../components/AccountTypePicker";
 import AvatarPicker from "../../components/AvatarPicker";
 import ProfileHeader from "../../components/ProfileHeader";
+import ProfileStats from "../../components/ProfileStats";
 import UsernameDialog from "../../components/UsernameDialog";
 import { useT } from "../../lib/i18n";
 import { BIO_MAX, UNIQUE_VIOLATION } from "../../lib/profile";
@@ -164,6 +165,8 @@ export default function Parametres() {
               <ProfileHeader
                 displayName={displayName}
                 username={savedUsername}
+                // Pas encore de publications ni d'abonnements dans la base : 0 en attendant
+                stats={<ProfileStats posts={0} followers={0} following={0} />}
                 onEditUsername={() => {
                   clearMessages();
                   setEditingUsername(true);
