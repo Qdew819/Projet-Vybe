@@ -3,10 +3,12 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import AccountTypePicker, { type AccountType } from "../../../components/AccountTypePicker";
-import { useT } from "../../../lib/i18n";
+import AvatarPicker from "../../../components/AvatarPicker";
 import UsernameField from "../../../components/UsernameField";
+import { useT } from "../../../lib/i18n";
 import { BIO_MAX, UNIQUE_VIOLATION, isValidUsername } from "../../../lib/profile";
 import { createClient } from "../../../lib/supabase/client";
+import { useAvatarChoice } from "../../../lib/useAvatarChoice";
 
 const MIN_AGE = 16; // même âge minimum que l'inscription
 const ADULT_AGE = 18;
@@ -38,8 +40,12 @@ export default function CreerProfil() {
   const [birthDate, setBirthDate] = useState("");
   const [bio, setBio] = useState("");
   const [chosenType, setChosenType] = useState<AccountType | null>(null);
+  const [firstName, setFirstName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Photo facultative : pas encore de photo enregistrée à la création
+  const avatar = useAvatarChoice(null, (key) => setError(t(key)));
 
   useEffect(() => {
     createClient()
@@ -49,6 +55,9 @@ export default function CreerProfil() {
           router.replace("/connexion");
           return;
         }
+        const meta = data.user.user_metadata ?? {};
+        const name = meta.first_name ?? meta.full_name ?? meta.name;
+        setFirstName(typeof name === "string" ? name.trim() : "");
         setReady(true);
       });
   }, [router]);
@@ -90,6 +99,19 @@ export default function CreerProfil() {
     const google = typeof (meta.full_name ?? meta.name) === "string" ? String(meta.full_name ?? meta.name).trim() : "";
     const displayName = (first ? [first, last].filter(Boolean).join(" ") : google) || username;
 
+    // Photo choisie : envoyée d'abord, pour connaître son adresse
+    let avatarUrl: string | null = null;
+    if (avatar.changed) {
+      try {
+        avatarUrl = await avatar.upload(supabase, data.user.id);
+      } catch (err) {
+        console.error("Envoi de la photo impossible :", err);
+        setSaving(false);
+        setError(t("settings.avatarUploadError"));
+        return;
+      }
+    }
+
     const { error } = await supabase.from("profiles").upsert(
       {
         id: data.user.id,
@@ -98,6 +120,8 @@ export default function CreerProfil() {
         birth_date: birthDate,
         bio: bio.trim() || null,
         is_private: accountType === "private",
+        // Sans photo choisie, on ne touche pas à avatar_url
+        ...(avatar.changed ? { avatar_url: avatarUrl } : {}),
       },
       { onConflict: "id" }
     );
@@ -132,6 +156,26 @@ export default function CreerProfil() {
         <p className="mt-2 text-sm text-muted">{t("profile.subtitle")}</p>
 
         <div className="mt-10">
+          <AvatarPicker
+            src={avatar.src}
+            initial={(username || firstName || "?").charAt(0).toUpperCase()}
+            busy={avatar.preparing || saving}
+            onPickPhoto={(photo) => {
+              setError("");
+              avatar.pickPhoto(photo);
+            }}
+            onPickPreset={(src) => {
+              setError("");
+              avatar.pickPreset(src);
+            }}
+            onRemove={() => {
+              setError("");
+              avatar.remove();
+            }}
+          />
+        </div>
+
+        <div className="mt-8">
           <UsernameField value={username} onChange={setUsername} />
         </div>
 
@@ -184,7 +228,7 @@ export default function CreerProfil() {
         <div className="mt-auto pt-10">
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || avatar.preparing}
             className="w-full rounded-2xl bg-accent py-4 text-base font-bold text-on-accent disabled:opacity-60"
           >
             {saving ? t("common.saving") : t("common.continue")}
