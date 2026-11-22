@@ -15,7 +15,7 @@ export default function Accueil() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
+    supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) {
         router.replace("/connexion");
         return;
@@ -29,6 +29,18 @@ export default function Accueil() {
       }
       setTheme(meta.theme);
       setLanguage(meta.language);
+
+      // Profil pas encore rempli (aucune ligne ou pas de date de naissance) : on passe par la création du profil.
+      // En cas d'erreur de lecture, on affiche quand même l'accueil plutôt que de bloquer la personne.
+      const { data: profile, error } = await supabase
+        .from("profiles")
+        .select("birth_date")
+        .eq("id", data.user.id)
+        .maybeSingle();
+      if (!error && !profile?.birth_date) {
+        router.replace("/profil/creer");
+        return;
+      }
 
       const first = meta.first_name as string | undefined;
       const last = meta.last_name as string | undefined;
