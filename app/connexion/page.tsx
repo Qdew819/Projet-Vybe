@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import LanguageToggle from "../../components/LanguageToggle";
 import SocialButtons from "../../components/SocialButtons";
+import { useT } from "../../lib/i18n";
 import { createClient } from "../../lib/supabase/client";
 
 export default function Connexion() {
   const router = useRouter();
+  const t = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -27,8 +30,8 @@ export default function Connexion() {
       const msg = error.message.toLowerCase();
       setError(
         msg.includes("not confirmed")
-          ? "Confirme d’abord ton adresse : clique sur le lien reçu par courriel."
-          : "Courriel ou mot de passe incorrect."
+          ? t("login.errorNotConfirmed")
+          : t("login.errorInvalid")
       );
       return;
     }
@@ -42,12 +45,15 @@ export default function Connexion() {
   return (
     <main className="bg-background text-foreground">
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-10 pt-8">
-        <Link href="/" className="text-sm font-semibold text-muted">
-          Retour
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link href="/" className="text-sm font-semibold text-muted">
+            {t("common.back")}
+          </Link>
+          <LanguageToggle />
+        </div>
 
-        <h1 className="mt-10 text-4xl font-black italic tracking-tight">Content de te revoir</h1>
-        <p className="mt-2 text-sm text-muted">Connecte-toi pour retrouver ta communauté.</p>
+        <h1 className="mt-10 text-4xl font-black italic tracking-tight">{t("login.title")}</h1>
+        <p className="mt-2 text-sm text-muted">{t("login.subtitle")}</p>
 
         <div className="mt-8">
           <SocialButtons />
@@ -56,14 +62,14 @@ export default function Connexion() {
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
           <div>
             <label htmlFor="email" className="mb-1.5 block text-sm font-semibold">
-              Courriel
+              {t("field.email")}
             </label>
             <input
               id="email"
               type="email"
               required
               autoComplete="email"
-              placeholder="toi@exemple.com"
+              placeholder={t("field.emailPlaceholder")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={fieldClass}
@@ -72,14 +78,14 @@ export default function Connexion() {
 
           <div>
             <label htmlFor="password" className="mb-1.5 block text-sm font-semibold">
-              Mot de passe
+              {t("field.password")}
             </label>
             <input
               id="password"
               type="password"
               required
               autoComplete="current-password"
-              placeholder="Ton mot de passe"
+              placeholder={t("field.passwordPlaceholder")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={fieldClass}
@@ -91,7 +97,7 @@ export default function Connexion() {
             disabled={loading}
             className="mt-2 rounded-2xl bg-accent py-4 text-base font-bold text-on-accent disabled:opacity-60"
           >
-            {loading ? "Connexion…" : "Se connecter"}
+            {loading ? t("login.loading") : t("login.submit")}
           </button>
 
           {error && (
@@ -102,9 +108,9 @@ export default function Connexion() {
         </form>
 
         <p className="mt-auto pt-10 text-center text-sm text-muted">
-          Pas encore de compte?{" "}
+          {t("login.noAccount")}{" "}
           <Link href="/inscription" className="font-bold text-accent-ink">
-            Crée-en un
+            {t("login.createOne")}
           </Link>
         </p>
       </div>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { languageInitScript } from "../lib/language";
 import { themeInitScript } from "../lib/theme";
 
 const geistSans = Geist({
@@ -21,7 +22,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="en"
+      lang="fr"
       data-theme="dark"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
@@ -29,6 +30,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         {/* Applique le thème sauvegardé avant l'affichage, pour éviter un flash */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* Met la langue choisie sur <html> avant l'affichage */}
+        <script dangerouslySetInnerHTML={{ __html: languageInitScript }} />
       </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

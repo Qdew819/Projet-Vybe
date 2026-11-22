@@ -1,11 +1,12 @@
 "use client";
 
+import { useT, type MessageKey } from "../lib/i18n";
 import type { ThemeChoice } from "../lib/theme";
 
-const options: { value: ThemeChoice; label: string; hint: string }[] = [
-  { value: "light", label: "Clair", hint: "Fond pâle" },
-  { value: "dark", label: "Sombre", hint: "Fond noir" },
-  { value: "auto", label: "Auto", hint: "Comme ton appareil" },
+const options: { value: ThemeChoice; label: MessageKey; hint: MessageKey }[] = [
+  { value: "light", label: "theme.light", hint: "theme.lightHint" },
+  { value: "dark", label: "theme.dark", hint: "theme.darkHint" },
+  { value: "auto", label: "theme.auto", hint: "theme.autoHint" },
 ];
 
 // Petit aperçu de l'écran dans chaque carte
@@ -39,8 +40,9 @@ export default function ThemePicker({
   value: ThemeChoice;
   onChange: (choice: ThemeChoice) => void;
 }) {
+  const t = useT();
   return (
-    <div role="radiogroup" aria-label="Affichage" className="grid grid-cols-3 gap-3">
+    <div role="radiogroup" aria-label={t("prefs.display")} className="grid grid-cols-3 gap-3">
       {options.map((o) => {
         const selected = o.value === value;
         return (
@@ -55,8 +57,8 @@ export default function ThemePicker({
             }`}
           >
             <Preview value={o.value} />
-            <span className={`text-sm font-bold ${selected ? "text-accent-ink" : ""}`}>{o.label}</span>
-            <span className="text-[11px] leading-tight text-muted">{o.hint}</span>
+            <span className={`text-sm font-bold ${selected ? "text-accent-ink" : ""}`}>{t(o.label)}</span>
+            <span className="text-[11px] leading-tight text-muted">{t(o.hint)}</span>
           </button>
         );
       })}

@@ -3,13 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import LanguageToggle from "../../components/LanguageToggle";
 import SocialButtons from "../../components/SocialButtons";
+import { useT } from "../../lib/i18n";
 import { createClient } from "../../lib/supabase/client";
 
 type Status = { type: "error" | "info"; text: string } | null;
 
 export default function Inscription() {
   const router = useRouter();
+  const t = useT();
   const [name, setName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -33,8 +36,8 @@ export default function Inscription() {
 
     if (error) {
       const text = error.message.toLowerCase().includes("already")
-        ? "Un compte existe déjà avec ce courriel. Essaie de te connecter."
-        : "Impossible de créer le compte pour l’instant. Vérifie ton courriel et ton mot de passe, puis réessaie.";
+        ? t("signup.errorExists")
+        : t("signup.errorGeneric");
       setStatus({ type: "error", text });
       return;
     }
@@ -47,7 +50,7 @@ export default function Inscription() {
 
     setStatus({
       type: "info",
-      text: "Compte créé! Va dans ta boîte courriel et clique sur le lien pour confirmer ton adresse, puis reviens te connecter.",
+      text: t("signup.checkEmail"),
     });
   }
 
@@ -57,12 +60,15 @@ export default function Inscription() {
   return (
     <main className="bg-background text-foreground">
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-10 pt-8">
-        <Link href="/" className="text-sm font-semibold text-muted">
-          Retour
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link href="/" className="text-sm font-semibold text-muted">
+            {t("common.back")}
+          </Link>
+          <LanguageToggle />
+        </div>
 
-        <h1 className="mt-10 text-4xl font-black italic tracking-tight">Rejoins Vybe</h1>
-        <p className="mt-2 text-sm text-muted">Crée ton compte et trouve ta prochaine game.</p>
+        <h1 className="mt-10 text-4xl font-black italic tracking-tight">{t("signup.title")}</h1>
+        <p className="mt-2 text-sm text-muted">{t("signup.subtitle")}</p>
 
         <div className="mt-8">
           <SocialButtons />
@@ -71,14 +77,14 @@ export default function Inscription() {
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
           <div>
             <label htmlFor="name" className="mb-1.5 block text-sm font-semibold">
-              Prénom
+              {t("field.firstName")}
             </label>
             <input
               id="name"
               type="text"
               required
               autoComplete="given-name"
-              placeholder="Ton prénom"
+              placeholder={t("field.firstNamePlaceholder")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className={fieldClass}
@@ -87,14 +93,14 @@ export default function Inscription() {
 
           <div>
             <label htmlFor="lastName" className="mb-1.5 block text-sm font-semibold">
-              Nom de famille
+              {t("field.lastName")}
             </label>
             <input
               id="lastName"
               type="text"
               required
               autoComplete="family-name"
-              placeholder="Ton nom de famille"
+              placeholder={t("field.lastNamePlaceholder")}
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
               className={fieldClass}
@@ -103,14 +109,14 @@ export default function Inscription() {
 
           <div>
             <label htmlFor="email" className="mb-1.5 block text-sm font-semibold">
-              Courriel
+              {t("field.email")}
             </label>
             <input
               id="email"
               type="email"
               required
               autoComplete="email"
-              placeholder="toi@exemple.com"
+              placeholder={t("field.emailPlaceholder")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={fieldClass}
@@ -119,7 +125,7 @@ export default function Inscription() {
 
           <div>
             <label htmlFor="password" className="mb-1.5 block text-sm font-semibold">
-              Mot de passe
+              {t("field.password")}
             </label>
             <input
               id="password"
@@ -127,7 +133,7 @@ export default function Inscription() {
               required
               minLength={8}
               autoComplete="new-password"
-              placeholder="8 caractères minimum"
+              placeholder={t("field.newPasswordPlaceholder")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={fieldClass}
@@ -136,7 +142,7 @@ export default function Inscription() {
 
           <label className="flex items-start gap-3 text-sm text-muted">
             <input type="checkbox" required className="mt-0.5 h-5 w-5 shrink-0 accent-accent-ink" />
-            <span>J’ai 16 ans ou plus et j’accepte les conditions d’utilisation et la politique de confidentialité.</span>
+            <span>{t("signup.terms")}</span>
           </label>
 
           <button
@@ -144,7 +150,7 @@ export default function Inscription() {
             disabled={loading}
             className="mt-2 rounded-2xl bg-accent py-4 text-base font-bold text-on-accent disabled:opacity-60"
           >
-            {loading ? "Création en cours…" : "Créer mon compte"}
+            {loading ? t("signup.loading") : t("signup.submit")}
           </button>
 
           {status && (
@@ -158,9 +164,9 @@ export default function Inscription() {
         </form>
 
         <p className="mt-auto pt-10 text-center text-sm text-muted">
-          Déjà un compte?{" "}
+          {t("signup.hasAccount")}{" "}
           <Link href="/connexion" className="font-bold text-accent-ink">
-            Connecte-toi
+            {t("signup.login")}
           </Link>
         </p>
       </div>

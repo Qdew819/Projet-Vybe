@@ -1,9 +1,13 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import LanguageToggle from "../components/LanguageToggle";
+import { useT, type MessageKey } from "../lib/i18n";
 
-const features = [
+const features: { label: MessageKey; icon: React.ReactNode }[] = [
   {
-    label: "Trouve des amis",
+    label: "welcome.friends",
     icon: (
       <>
         <circle cx="9" cy="8" r="3.5" />
@@ -14,7 +18,7 @@ const features = [
     ),
   },
   {
-    label: "Participe à des événements",
+    label: "welcome.events",
     icon: (
       <>
         <rect x="3" y="5" width="18" height="16" rx="2" />
@@ -23,7 +27,7 @@ const features = [
     ),
   },
   {
-    label: "Regarde des vidéos de sport",
+    label: "welcome.videos",
     icon: (
       <>
         <circle cx="12" cy="12" r="9" />
@@ -32,7 +36,7 @@ const features = [
     ),
   },
   {
-    label: "Suis ton sport",
+    label: "welcome.follow",
     icon: (
       <>
         <path d="M8 4h8v6a4 4 0 0 1-8 0V4z" />
@@ -43,6 +47,7 @@ const features = [
 ];
 
 export default function Welcome() {
+  const t = useT();
   return (
     <main className="bg-black text-white">
       <div className="relative mx-auto min-h-dvh w-full max-w-md overflow-hidden">
@@ -58,11 +63,16 @@ export default function Welcome() {
           }}
         />
 
+        {/* Choix de la langue avant d'avoir un compte */}
+        <div className="absolute right-4 top-4 z-20">
+          <LanguageToggle tone="dark" />
+        </div>
+
         <div className="relative z-10 flex min-h-dvh flex-col items-center px-6 pb-10 pt-[39dvh]">
           <p className="text-center text-sm font-bold tracking-wide">
-            REGROUPE. <span className="text-[#39ff14]">JOUE.</span> PARTAGE.
+            {t("welcome.sloganStart")} <span className="text-[#39ff14]">{t("welcome.sloganAccent")}</span> {t("welcome.sloganEnd")}
           </p>
-          <p className="mt-1 text-center text-xs text-neutral-300">La communauté sportive tout-en-un</p>
+          <p className="mt-1 text-center text-xs text-neutral-300">{t("welcome.tagline")}</p>
 
           <ul className="mt-6 grid w-full grid-cols-4 gap-2">
             {features.map((f) => (
@@ -82,20 +92,20 @@ export default function Welcome() {
                 >
                   {f.icon}
                 </svg>
-                {f.label}
+                {t(f.label)}
               </li>
             ))}
           </ul>
 
           <div className="mt-auto flex w-full flex-col gap-3 pt-10">
             <Link href="/connexion" className="rounded-2xl bg-[#39ff14] py-4 text-center text-base font-bold text-black">
-              Se connecter
+              {t("welcome.login")}
             </Link>
             <Link
               href="/inscription"
               className="rounded-2xl border border-[#39ff14] bg-black/40 py-4 text-center text-base font-bold text-[#39ff14] backdrop-blur-sm"
             >
-              Créer un compte
+              {t("welcome.signup")}
             </Link>
           </div>
         </div>
