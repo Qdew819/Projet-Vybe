@@ -75,30 +75,31 @@ export default function AvatarPicker({
   const iconClass = "h-6 w-6 shrink-0 text-accent-ink";
 
   return (
-    <div className="flex items-center gap-5">
-      <Avatar src={src} initial={initial} alt={t("settings.avatarAlt")} size={96} />
-
-      <div className="flex flex-col items-start gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={open}
-          aria-haspopup="dialog"
-          className="rounded-xl border border-accent-ink px-4 py-2 text-sm font-bold text-accent-ink disabled:opacity-60"
+    <div className="flex flex-col items-center">
+      {/* Toute la photo est cliquable ; le petit badge caméra en bas à droite montre qu'on peut la changer */}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={open}
+        aria-haspopup="dialog"
+        aria-label={t("settings.avatarChange")}
+        title={t("settings.avatarChange")}
+        className="group relative rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent-ink disabled:opacity-60"
+      >
+        <Avatar src={src} initial={initial} alt={t("settings.avatarAlt")} size={112} />
+        <span
+          aria-hidden="true"
+          className="absolute bottom-0.5 right-0.5 flex h-9 w-9 items-center justify-center rounded-full border-[3px] border-background bg-accent text-on-accent transition-transform group-hover:scale-110"
         >
-          {busy ? t("settings.avatarPreparing") : t("settings.avatarChange")}
-        </button>
-        {src && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onRemove}
-            className="px-1 text-sm font-semibold text-muted underline-offset-2 hover:underline disabled:opacity-60"
-          >
-            {t("settings.avatarRemove")}
-          </button>
-        )}
-      </div>
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" />
+            <circle cx="12" cy="13" r="3.5" />
+          </svg>
+        </span>
+      </button>
+      <p aria-live="polite" className="mt-2 h-4 text-xs text-muted">
+        {busy ? t("settings.avatarPreparing") : ""}
+      </p>
 
       {/* Photothèque : choix d'une photo existante */}
       <input ref={libraryRef} type="file" accept={AVATAR_ACCEPT} className="sr-only" tabIndex={-1} onChange={handleFile} />
@@ -159,6 +160,18 @@ export default function AvatarPicker({
               </svg>
               {t("avatarPicker.avatars")}
             </button>
+            {src && (
+              <button
+                type="button"
+                onClick={() => {
+                  close();
+                  onRemove();
+                }}
+                className="mt-1 w-full rounded-2xl py-3 text-sm font-bold text-danger hover:underline"
+              >
+                {t("settings.avatarRemove")}
+              </button>
+            )}
           </div>
         )}
 
