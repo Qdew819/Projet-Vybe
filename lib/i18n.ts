@@ -110,6 +110,36 @@ const fr = {
   "settings.saved": "C’est enregistré.",
   "settings.saveError": "Impossible d’enregistrer tes modifications pour l’instant. Réessaie dans un instant.",
   "settings.loadError": "Impossible de charger tes paramètres pour l’instant. Réessaie dans un instant.",
+  "settings.avatarAlt": "Ta photo de profil",
+  "settings.avatarChange": "Changer la photo",
+  "settings.avatarPreparing": "Préparation…",
+  "settings.avatarRemove": "Retirer la photo",
+  "settings.avatarTypeError": "Choisis une photo au format JPEG, PNG ou WebP.",
+  "settings.avatarSizeError": "Cette photo est trop lourde. Choisis-en une de 10 Mo maximum.",
+  "settings.avatarReadError": "Impossible de lire cette photo. Essaies-en une autre.",
+  "settings.avatarUploadError": "Impossible d’envoyer ta photo pour l’instant. Réessaie dans un instant.",
+
+  "avatarPicker.title": "Ta photo de profil",
+  "avatarPicker.library": "Choisir dans ma photothèque",
+  "avatarPicker.camera": "Prendre une photo",
+  "avatarPicker.avatars": "Choisir un avatar",
+  "avatarPicker.close": "Fermer",
+
+  "camera.preview": "Aperçu de la caméra",
+  "camera.starting": "Ouverture de la caméra…",
+  "camera.denied":
+    "L’accès à la caméra est bloqué. Autorise-le dans ton navigateur, ou choisis une photo de ta photothèque.",
+  "camera.error": "Impossible d’ouvrir la caméra. Choisis plutôt une photo de ta photothèque.",
+  "camera.take": "Prendre la photo",
+
+  "avatar.hockey": "Rondelle de hockey",
+  "avatar.soccer": "Ballon de soccer",
+  "avatar.basketball": "Ballon de basketball",
+  "avatar.tennis": "Balle de tennis",
+  "avatar.volleyball": "Ballon de volleyball",
+  "avatar.baseball": "Balle de baseball",
+  "avatar.football": "Ballon de football",
+  "avatar.pingpong": "Raquette de ping-pong",
 };
 
 export type MessageKey = keyof typeof fr;
@@ -219,6 +249,35 @@ const en: Messages = {
   "settings.saved": "Saved.",
   "settings.saveError": "Couldn’t save your changes right now. Try again in a moment.",
   "settings.loadError": "Couldn’t load your settings right now. Try again in a moment.",
+  "settings.avatarAlt": "Your profile photo",
+  "settings.avatarChange": "Change photo",
+  "settings.avatarPreparing": "Preparing…",
+  "settings.avatarRemove": "Remove photo",
+  "settings.avatarTypeError": "Choose a JPEG, PNG or WebP photo.",
+  "settings.avatarSizeError": "This photo is too large. Choose one up to 10 MB.",
+  "settings.avatarReadError": "Couldn’t read this photo. Try another one.",
+  "settings.avatarUploadError": "Couldn’t upload your photo right now. Try again in a moment.",
+
+  "avatarPicker.title": "Your profile photo",
+  "avatarPicker.library": "Choose from my photos",
+  "avatarPicker.camera": "Take a photo",
+  "avatarPicker.avatars": "Choose an avatar",
+  "avatarPicker.close": "Close",
+
+  "camera.preview": "Camera preview",
+  "camera.starting": "Opening the camera…",
+  "camera.denied": "Camera access is blocked. Allow it in your browser, or choose a photo from your library.",
+  "camera.error": "Couldn’t open the camera. Choose a photo from your library instead.",
+  "camera.take": "Take photo",
+
+  "avatar.hockey": "Hockey puck",
+  "avatar.soccer": "Soccer ball",
+  "avatar.basketball": "Basketball",
+  "avatar.tennis": "Tennis ball",
+  "avatar.volleyball": "Volleyball",
+  "avatar.baseball": "Baseball",
+  "avatar.football": "Football",
+  "avatar.pingpong": "Ping-pong paddle",
 };
 
 const dictionaries: Record<Language, Messages> = { fr, en };

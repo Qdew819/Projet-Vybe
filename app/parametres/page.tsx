@@ -4,10 +4,26 @@ import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AccountTypePicker, { type AccountType } from "../../components/AccountTypePicker";
+import AvatarPicker from "../../components/AvatarPicker";
 import UsernameField from "../../components/UsernameField";
+import {
+  AVATAR_MAX_BYTES,
+  deleteAvatar,
+  isAcceptedAvatar,
+  isStoredAvatar,
+  resizeAvatar,
+  uploadAvatar,
+} from "../../lib/avatar";
 import { useT } from "../../lib/i18n";
 import { BIO_MAX, UNIQUE_VIOLATION, isValidUsername } from "../../lib/profile";
 import { createClient } from "../../lib/supabase/client";
+
+// Nouvelle photo (de la photothèque ou de la caméra) à envoyer, avatar prêt à l'emploi, ou photo à retirer
+type PendingAvatar =
+  | { kind: "photo"; blob: Blob; preview: string }
+  | { kind: "preset"; src: string }
+  | { kind: "remove" }
+  | null;
 
 export default function Parametres() {
   const router = useRouter();
@@ -21,6 +37,10 @@ export default function Parametres() {
   const [username, setUsername] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("public");
   const [bio, setBio] = useState("");
+  // Photo : adresse enregistrée, et changement pas encore enregistré (aucun tant que c'est null)
+  const [savedAvatar, setSavedAvatar] = useState<string | null>(null);
+  const [pendingAvatar, setPendingAvatar] = useState<PendingAvatar>(null);
+  const [preparingAvatar, setPreparingAvatar] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -35,7 +55,7 @@ export default function Parametres() {
       }
       const { data: profile, error } = await supabase
         .from("profiles")
-        .select("username, is_private, bio")
+        .select("username, is_private, bio, avatar_url")
         .eq("id", data.user.id)
         .maybeSingle();
       if (error) {
@@ -59,9 +79,51 @@ export default function Parametres() {
       setAccountType(currentType);
       setSavedBio(currentBio);
       setBio(currentBio);
+      setSavedAvatar(typeof profile.avatar_url === "string" && profile.avatar_url ? profile.avatar_url : null);
       setReady(true);
     });
   }, [router]);
+
+  // Libère l'aperçu local de la photo quand il est remplacé ou quand on quitte la page
+  const photoPreview = pendingAvatar?.kind === "photo" ? pendingAvatar.preview : null;
+  useEffect(() => {
+    return () => {
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+    };
+  }, [photoPreview]);
+
+  // Photo de la photothèque ou prise avec la caméra
+  async function pickPhoto(photo: Blob) {
+    clearMessages();
+    if (!isAcceptedAvatar(photo)) {
+      setError(t("settings.avatarTypeError"));
+      return;
+    }
+    if (photo.size > AVATAR_MAX_BYTES) {
+      setError(t("settings.avatarSizeError"));
+      return;
+    }
+    setPreparingAvatar(true);
+    try {
+      const blob = await resizeAvatar(photo);
+      setPendingAvatar({ kind: "photo", blob, preview: URL.createObjectURL(blob) });
+    } catch (err) {
+      console.error("Préparation de la photo impossible :", err);
+      setError(t("settings.avatarReadError"));
+    } finally {
+      setPreparingAvatar(false);
+    }
+  }
+
+  function pickPreset(src: string) {
+    clearMessages();
+    setPendingAvatar(src === savedAvatar ? null : { kind: "preset", src });
+  }
+
+  function removeAvatar() {
+    clearMessages();
+    setPendingAvatar(savedAvatar !== null ? { kind: "remove" } : null);
+  }
 
   // Dès qu'on modifie quelque chose, on efface l'ancien message
   function clearMessages() {
@@ -82,18 +144,46 @@ export default function Parametres() {
       return;
     }
     setSaving(true);
+    const supabase = createClient();
 
+    // 1. Une nouvelle photo est envoyée d'abord, pour connaître son adresse
+    let avatarUrl = savedAvatar;
+    if (pendingAvatar?.kind === "photo") {
+      try {
+        avatarUrl = await uploadAvatar(supabase, userId, pendingAvatar.blob);
+      } catch (err) {
+        console.error("Envoi de la photo impossible :", err);
+        setSaving(false);
+        setError(t("settings.avatarUploadError"));
+        return;
+      }
+    } else if (pendingAvatar?.kind === "preset") {
+      avatarUrl = pendingAvatar.src;
+    } else if (pendingAvatar?.kind === "remove") {
+      avatarUrl = null;
+    }
+
+    // 2. Puis le profil
     const newBio = bio.trim();
-    const { error } = await createClient()
+    const { error } = await supabase
       .from("profiles")
-      .update({ username, is_private: accountType === "private", bio: newBio || null })
+      .update({ username, is_private: accountType === "private", bio: newBio || null, avatar_url: avatarUrl })
       .eq("id", userId);
-    setSaving(false);
     if (error) {
+      setSaving(false);
       console.error(`Enregistrement des paramètres impossible : ${error.message} (code ${error.code})`);
       setError(error.code === UNIQUE_VIOLATION ? t("profile.errorUsernameTaken") : t("settings.saveError"));
       return;
     }
+
+    // 3. Photo envoyée remplacée par un avatar ou retirée : on supprime le fichier stocké (sans bloquer si ça échoue)
+    if (isStoredAvatar(savedAvatar) && !isStoredAvatar(avatarUrl)) {
+      await deleteAvatar(supabase, userId).catch((err) => console.error("Suppression de la photo impossible :", err));
+    }
+
+    setSaving(false);
+    setSavedAvatar(avatarUrl);
+    setPendingAvatar(null);
     setSavedUsername(username);
     setSavedType(accountType);
     setSavedBio(newBio);
@@ -107,7 +197,20 @@ export default function Parametres() {
     );
   }
 
-  const unchanged = username === savedUsername && accountType === savedType && bio.trim() === savedBio;
+  const unchanged =
+    username === savedUsername &&
+    accountType === savedType &&
+    bio.trim() === savedBio &&
+    pendingAvatar === null;
+  // Ce qu'on montre : le changement en attente s'il y en a un, sinon la photo enregistrée
+  const avatarSrc =
+    pendingAvatar === null
+      ? savedAvatar
+      : pendingAvatar.kind === "photo"
+        ? pendingAvatar.preview
+        : pendingAvatar.kind === "preset"
+          ? pendingAvatar.src
+          : null;
 
   return (
     <main className="bg-background text-foreground">
@@ -121,6 +224,17 @@ export default function Parametres() {
         {userId && (
           <>
             <div className="mt-10">
+              <AvatarPicker
+                src={avatarSrc}
+                initial={(savedUsername || "?").charAt(0).toUpperCase()}
+                busy={preparingAvatar || saving}
+                onPickPhoto={pickPhoto}
+                onPickPreset={pickPreset}
+                onRemove={removeAvatar}
+              />
+            </div>
+
+            <div className="mt-8">
               <UsernameField
                 value={username}
                 onChange={(value) => {
@@ -168,7 +282,7 @@ export default function Parametres() {
           <div className="mt-auto pt-10">
             <button
               type="submit"
-              disabled={saving || unchanged}
+              disabled={saving || preparingAvatar || unchanged}
               className="w-full rounded-2xl bg-accent py-4 text-base font-bold text-on-accent disabled:opacity-60"
             >
               {saving ? t("common.saving") : t("settings.save")}
