@@ -15,5 +15,14 @@ export function isValidUsername(value: string): boolean {
   return value.length >= USERNAME_MIN && value.length <= USERNAME_MAX && USERNAME_PATTERN.test(value);
 }
 
+// Nom affiché : prénom et nom de l'inscription, sinon le nom Google (vide si aucun des deux)
+export function displayNameFromMetadata(meta: Record<string, unknown>): string {
+  const first = typeof meta.first_name === "string" ? meta.first_name.trim() : "";
+  const last = typeof meta.last_name === "string" ? meta.last_name.trim() : "";
+  const google = meta.full_name ?? meta.name;
+  if (first) return [first, last].filter(Boolean).join(" ");
+  return typeof google === "string" ? google.trim() : "";
+}
+
 // Code Postgres d'une valeur déjà utilisée (nom d'utilisateur unique)
 export const UNIQUE_VIOLATION = "23505";

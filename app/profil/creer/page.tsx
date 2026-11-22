@@ -4,9 +4,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import AccountTypePicker, { type AccountType } from "../../../components/AccountTypePicker";
 import AvatarPicker from "../../../components/AvatarPicker";
-import UsernameField from "../../../components/UsernameField";
+import ProfileHeader from "../../../components/ProfileHeader";
+import UsernameDialog from "../../../components/UsernameDialog";
 import { useT } from "../../../lib/i18n";
-import { BIO_MAX, UNIQUE_VIOLATION, isValidUsername } from "../../../lib/profile";
+import { BIO_MAX, UNIQUE_VIOLATION, displayNameFromMetadata, isValidUsername } from "../../../lib/profile";
 import { createClient } from "../../../lib/supabase/client";
 import { useAvatarChoice } from "../../../lib/useAvatarChoice";
 
@@ -40,7 +41,8 @@ export default function CreerProfil() {
   const [birthDate, setBirthDate] = useState("");
   const [bio, setBio] = useState("");
   const [chosenType, setChosenType] = useState<AccountType | null>(null);
-  const [firstName, setFirstName] = useState("");
+  const [metaName, setMetaName] = useState(""); // nom affiché tiré de l'inscription ou de Google
+  const [editingUsername, setEditingUsername] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -55,9 +57,7 @@ export default function CreerProfil() {
           router.replace("/connexion");
           return;
         }
-        const meta = data.user.user_metadata ?? {};
-        const name = meta.first_name ?? meta.full_name ?? meta.name;
-        setFirstName(typeof name === "string" ? name.trim() : "");
+        setMetaName(displayNameFromMetadata(data.user.user_metadata ?? {}));
         setReady(true);
       });
   }, [router]);
@@ -71,8 +71,10 @@ export default function CreerProfil() {
     e.preventDefault();
     setError("");
 
+    // Nom d'utilisateur pas encore choisi : on ouvre directement la fenêtre pour le choisir
     if (!isValidUsername(username)) {
-      setError(t("profile.errorUsername"));
+      setError(t("profile.errorUsernameMissing"));
+      setEditingUsername(true);
       return;
     }
     if (age === null) {
@@ -93,11 +95,7 @@ export default function CreerProfil() {
     }
 
     // Nom affiché : prénom et nom de l'inscription, sinon le nom Google, sinon le nom d'utilisateur
-    const meta = data.user.user_metadata ?? {};
-    const first = typeof meta.first_name === "string" ? meta.first_name.trim() : "";
-    const last = typeof meta.last_name === "string" ? meta.last_name.trim() : "";
-    const google = typeof (meta.full_name ?? meta.name) === "string" ? String(meta.full_name ?? meta.name).trim() : "";
-    const displayName = (first ? [first, last].filter(Boolean).join(" ") : google) || username;
+    const displayName = displayNameFromMetadata(data.user.user_metadata ?? {}) || username;
 
     // Photo choisie : envoyée d'abord, pour connaître son adresse
     let avatarUrl: string | null = null;
@@ -132,7 +130,12 @@ export default function CreerProfil() {
           (error.hint ? ` — ${error.hint}` : "")
       );
       setSaving(false);
-      setError(error.code === UNIQUE_VIOLATION ? t("profile.errorUsernameTaken") : t("profile.saveError"));
+      if (error.code === UNIQUE_VIOLATION) {
+        setError(t("profile.errorUsernameTaken"));
+        setEditingUsername(true);
+      } else {
+        setError(t("profile.saveError"));
+      }
       return;
     }
     router.push("/accueil");
@@ -156,27 +159,49 @@ export default function CreerProfil() {
         <p className="mt-2 text-sm text-muted">{t("profile.subtitle")}</p>
 
         <div className="mt-10">
-          <AvatarPicker
-            src={avatar.src}
-            initial={(username || firstName || "?").charAt(0).toUpperCase()}
-            busy={avatar.preparing || saving}
-            onPickPhoto={(photo) => {
+          <ProfileHeader
+            displayName={metaName}
+            username={username}
+            onEditUsername={() => {
               setError("");
-              avatar.pickPhoto(photo);
+              setEditingUsername(true);
             }}
-            onPickPreset={(src) => {
-              setError("");
-              avatar.pickPreset(src);
+            avatar={
+              <AvatarPicker
+                size={80}
+                src={avatar.src}
+                initial={(username || metaName || "?").charAt(0).toUpperCase()}
+                busy={avatar.preparing || saving}
+                onPickPhoto={(photo) => {
+                  setError("");
+                  avatar.pickPhoto(photo);
+                }}
+                onPickPreset={(src) => {
+                  setError("");
+                  avatar.pickPreset(src);
+                }}
+                onRemove={() => {
+                  setError("");
+                  avatar.remove();
+                }}
+              />
+            }
+          />
+          {/* Ici le nom est seulement gardé : il est enregistré avec le reste au clic sur « Continuer » */}
+          <UsernameDialog
+            open={editingUsername}
+            value={username}
+            confirmLabel={t("common.confirm")}
+            initialError={error}
+            onConfirm={async (newUsername) => {
+              setUsername(newUsername);
+              return null;
             }}
-            onRemove={() => {
+            onClose={() => {
+              setEditingUsername(false);
               setError("");
-              avatar.remove();
             }}
           />
-        </div>
-
-        <div className="mt-8">
-          <UsernameField value={username} onChange={setUsername} />
         </div>
 
         <div className="mt-6">

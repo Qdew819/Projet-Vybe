@@ -18,10 +18,12 @@ export default function AvatarPicker({
   onPickPhoto,
   onPickPreset,
   onRemove,
+  size = 112,
 }: {
   src: string | null;
   initial: string;
   busy: boolean;
+  size?: number; // diamètre de la photo en pixels
   onPickPhoto: (photo: Blob) => void;
   onPickPreset: (src: string) => void;
   onRemove: () => void;
@@ -31,6 +33,7 @@ export default function AvatarPicker({
   const libraryRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<View>("menu");
+  const badge = Math.round(size * 0.36); // taille du badge caméra, proportionnelle à la photo
 
   function open() {
     setView("menu");
@@ -75,7 +78,7 @@ export default function AvatarPicker({
   const iconClass = "h-6 w-6 shrink-0 text-accent-ink";
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="shrink-0">
       {/* Toute la photo est cliquable ; le petit badge caméra en bas à droite montre qu'on peut la changer */}
       <button
         type="button"
@@ -86,18 +89,20 @@ export default function AvatarPicker({
         title={t("settings.avatarChange")}
         className="group relative rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent-ink disabled:opacity-60"
       >
-        <Avatar src={src} initial={initial} alt={t("settings.avatarAlt")} size={112} />
+        <Avatar src={src} initial={initial} alt={t("settings.avatarAlt")} size={size} />
         <span
           aria-hidden="true"
-          className="absolute bottom-0.5 right-0.5 flex h-9 w-9 items-center justify-center rounded-full border-[3px] border-background bg-accent text-on-accent transition-transform group-hover:scale-110"
+          className="absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full border-[3px] border-background bg-accent text-on-accent transition-transform group-hover:scale-110"
+          style={{ width: badge, height: badge }}
         >
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+          <svg viewBox="0 0 24 24" className="h-1/2 w-1/2" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" />
             <circle cx="12" cy="13" r="3.5" />
           </svg>
         </span>
       </button>
-      <p aria-live="polite" className="mt-2 h-4 text-xs text-muted">
+      {/* Annoncé aux lecteurs d'écran pendant la préparation de la photo */}
+      <p aria-live="polite" className="sr-only">
         {busy ? t("settings.avatarPreparing") : ""}
       </p>
 

@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AccountTypePicker, { type AccountType } from "../../components/AccountTypePicker";
 import AvatarPicker from "../../components/AvatarPicker";
-import UsernameField from "../../components/UsernameField";
+import ProfileHeader from "../../components/ProfileHeader";
+import UsernameDialog from "../../components/UsernameDialog";
 import { useT } from "../../lib/i18n";
-import { BIO_MAX, UNIQUE_VIOLATION, isValidUsername } from "../../lib/profile";
+import { BIO_MAX, UNIQUE_VIOLATION } from "../../lib/profile";
 import { createClient } from "../../lib/supabase/client";
 import { useAvatarChoice } from "../../lib/useAvatarChoice";
 
@@ -21,7 +22,8 @@ export default function Parametres() {
   const [savedBio, setSavedBio] = useState("");
   const [savedUsername, setSavedUsername] = useState("");
   const [savedAvatar, setSavedAvatar] = useState<string | null>(null);
-  const [username, setUsername] = useState("");
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [displayName, setDisplayName] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("public");
   const [bio, setBio] = useState("");
   const [saving, setSaving] = useState(false);
@@ -43,7 +45,7 @@ export default function Parametres() {
       }
       const { data: profile, error } = await supabase
         .from("profiles")
-        .select("username, is_private, bio, avatar_url")
+        .select("username, display_name, is_private, bio, avatar_url")
         .eq("id", data.user.id)
         .maybeSingle();
       if (error) {
@@ -62,7 +64,7 @@ export default function Parametres() {
       const currentUsername = typeof profile.username === "string" ? profile.username : "";
       setUserId(data.user.id);
       setSavedUsername(currentUsername);
-      setUsername(currentUsername);
+      setDisplayName(typeof profile.display_name === "string" ? profile.display_name : "");
       setSavedType(currentType);
       setAccountType(currentType);
       setSavedBio(currentBio);
@@ -83,13 +85,24 @@ export default function Parametres() {
     clearMessages();
   }
 
+  // Fenêtre « Modifier nom profil » : le nom est enregistré tout de suite.
+  // Renvoie le message d'erreur à afficher dans la fenêtre, ou null si c'est bon.
+  async function saveUsername(newUsername: string): Promise<string | null> {
+    if (newUsername === savedUsername) return null;
+    const { error } = await createClient().from("profiles").update({ username: newUsername }).eq("id", userId);
+    if (error) {
+      console.error(`Enregistrement du nom d'utilisateur impossible : ${error.message} (code ${error.code})`);
+      return error.code === UNIQUE_VIOLATION ? t("profile.errorUsernameTaken") : t("settings.saveError");
+    }
+    setSavedUsername(newUsername);
+    setError("");
+    setSuccess(true);
+    return null;
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     clearMessages();
-    if (!isValidUsername(username)) {
-      setError(t("profile.errorUsername"));
-      return;
-    }
     setSaving(true);
     const supabase = createClient();
 
@@ -108,12 +121,12 @@ export default function Parametres() {
     const newBio = bio.trim();
     const { error } = await supabase
       .from("profiles")
-      .update({ username, is_private: accountType === "private", bio: newBio || null, avatar_url: avatarUrl })
+      .update({ is_private: accountType === "private", bio: newBio || null, avatar_url: avatarUrl })
       .eq("id", userId);
     if (error) {
       setSaving(false);
       console.error(`Enregistrement des paramètres impossible : ${error.message} (code ${error.code})`);
-      setError(error.code === UNIQUE_VIOLATION ? t("profile.errorUsernameTaken") : t("settings.saveError"));
+      setError(t("settings.saveError"));
       return;
     }
 
@@ -122,7 +135,6 @@ export default function Parametres() {
 
     setSaving(false);
     setSavedAvatar(avatarUrl);
-    setSavedUsername(username);
     setSavedType(accountType);
     setSavedBio(newBio);
     setBio(newBio);
@@ -135,8 +147,7 @@ export default function Parametres() {
     );
   }
 
-  const unchanged =
-    username === savedUsername && accountType === savedType && bio.trim() === savedBio && !avatar.changed;
+  const unchanged = accountType === savedType && bio.trim() === savedBio && !avatar.changed;
 
   return (
     <main className="bg-background text-foreground">
@@ -150,32 +161,40 @@ export default function Parametres() {
         {userId && (
           <>
             <div className="mt-10">
-              <AvatarPicker
-                src={avatar.src}
-                initial={(savedUsername || "?").charAt(0).toUpperCase()}
-                busy={avatar.preparing || saving}
-                onPickPhoto={(photo) => {
+              <ProfileHeader
+                displayName={displayName}
+                username={savedUsername}
+                onEditUsername={() => {
                   clearMessages();
-                  avatar.pickPhoto(photo);
+                  setEditingUsername(true);
                 }}
-                onPickPreset={(src) => {
-                  clearMessages();
-                  avatar.pickPreset(src);
-                }}
-                onRemove={() => {
-                  clearMessages();
-                  avatar.remove();
-                }}
+                avatar={
+                  <AvatarPicker
+                    size={80}
+                    src={avatar.src}
+                    initial={(savedUsername || "?").charAt(0).toUpperCase()}
+                    busy={avatar.preparing || saving}
+                    onPickPhoto={(photo) => {
+                      clearMessages();
+                      avatar.pickPhoto(photo);
+                    }}
+                    onPickPreset={(src) => {
+                      clearMessages();
+                      avatar.pickPreset(src);
+                    }}
+                    onRemove={() => {
+                      clearMessages();
+                      avatar.remove();
+                    }}
+                  />
+                }
               />
-            </div>
-
-            <div className="mt-8">
-              <UsernameField
-                value={username}
-                onChange={(value) => {
-                  setUsername(value);
-                  clearMessages();
-                }}
+              <UsernameDialog
+                open={editingUsername}
+                value={savedUsername}
+                confirmLabel={t("settings.save")}
+                onConfirm={saveUsername}
+                onClose={() => setEditingUsername(false)}
               />
             </div>
 
