@@ -37,17 +37,17 @@ export default function Connexion() {
   }
 
   const fieldClass =
-    "w-full rounded-xl border border-[#39ff14]/40 bg-black/60 px-4 py-3 text-base text-white placeholder:text-neutral-500 outline-none focus:border-[#39ff14]";
+    "w-full rounded-xl border border-accent-ink/40 bg-surface px-4 py-3 text-base text-foreground placeholder:text-subtle outline-none focus:border-accent-ink";
 
   return (
-    <main className="bg-black text-white">
+    <main className="bg-background text-foreground">
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-10 pt-8">
-        <Link href="/" className="text-sm font-semibold text-neutral-400">
+        <Link href="/" className="text-sm font-semibold text-muted">
           Retour
         </Link>
 
         <h1 className="mt-10 text-4xl font-black italic tracking-tight">Content de te revoir</h1>
-        <p className="mt-2 text-sm text-neutral-400">Connecte-toi pour retrouver ta communauté.</p>
+        <p className="mt-2 text-sm text-muted">Connecte-toi pour retrouver ta communauté.</p>
 
         <div className="mt-8">
           <SocialButtons />
@@ -89,21 +89,21 @@ export default function Connexion() {
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 rounded-2xl bg-[#39ff14] py-4 text-base font-bold text-black disabled:opacity-60"
+            className="mt-2 rounded-2xl bg-accent py-4 text-base font-bold text-on-accent disabled:opacity-60"
           >
             {loading ? "Connexion…" : "Se connecter"}
           </button>
 
           {error && (
-            <p aria-live="polite" className="text-sm text-red-400">
+            <p aria-live="polite" className="text-sm text-danger">
               {error}
             </p>
           )}
         </form>
 
-        <p className="mt-auto pt-10 text-center text-sm text-neutral-400">
+        <p className="mt-auto pt-10 text-center text-sm text-muted">
           Pas encore de compte?{" "}
-          <Link href="/inscription" className="font-bold text-[#39ff14]">
+          <Link href="/inscription" className="font-bold text-accent-ink">
             Crée-en un
           </Link>
         </p>

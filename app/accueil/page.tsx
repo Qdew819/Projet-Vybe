@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
+import { isThemeChoice, setTheme } from "../../lib/theme";
 
 export default function Accueil() {
   const router = useRouter();
@@ -17,6 +18,14 @@ export default function Accueil() {
         return;
       }
       const meta = data.user.user_metadata ?? {};
+
+      // Pas encore choisi d'affichage : on passe par l'écran de bienvenue
+      if (!isThemeChoice(meta.theme)) {
+        router.replace("/bienvenue");
+        return;
+      }
+      setTheme(meta.theme);
+
       const first = meta.first_name as string | undefined;
       const last = meta.last_name as string | undefined;
       const google = (meta.full_name ?? meta.name) as string | undefined;
@@ -33,24 +42,24 @@ export default function Accueil() {
 
   if (!ready) {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-black text-neutral-400">
+      <main className="flex min-h-dvh items-center justify-center bg-background text-muted">
         Chargement…
       </main>
     );
   }
 
   return (
-    <main className="bg-black text-white">
+    <main className="bg-background text-foreground">
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-10 pt-16">
         <h1 className="text-4xl font-black italic tracking-tight">
-          Salut <span className="text-[#39ff14]">{name}</span>!
+          Salut <span className="text-accent-ink">{name}</span>!
         </h1>
-        <p className="mt-3 text-neutral-300">Tu es connecté. Les événements arrivent bientôt.</p>
+        <p className="mt-3 text-muted">Tu es connecté. Les événements arrivent bientôt.</p>
 
         <button
           type="button"
           onClick={signOut}
-          className="mt-auto rounded-2xl border border-[#39ff14] py-4 text-base font-bold text-[#39ff14]"
+          className="mt-auto rounded-2xl border border-accent-ink py-4 text-base font-bold text-accent-ink"
         >
           Se déconnecter
         </button>

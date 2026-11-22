@@ -52,17 +52,17 @@ export default function Inscription() {
   }
 
   const fieldClass =
-    "w-full rounded-xl border border-[#39ff14]/40 bg-black/60 px-4 py-3 text-base text-white placeholder:text-neutral-500 outline-none focus:border-[#39ff14]";
+    "w-full rounded-xl border border-accent-ink/40 bg-surface px-4 py-3 text-base text-foreground placeholder:text-subtle outline-none focus:border-accent-ink";
 
   return (
-    <main className="bg-black text-white">
+    <main className="bg-background text-foreground">
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-10 pt-8">
-        <Link href="/" className="text-sm font-semibold text-neutral-400">
+        <Link href="/" className="text-sm font-semibold text-muted">
           Retour
         </Link>
 
         <h1 className="mt-10 text-4xl font-black italic tracking-tight">Rejoins Vybe</h1>
-        <p className="mt-2 text-sm text-neutral-400">Crée ton compte et trouve ta prochaine game.</p>
+        <p className="mt-2 text-sm text-muted">Crée ton compte et trouve ta prochaine game.</p>
 
         <div className="mt-8">
           <SocialButtons />
@@ -134,15 +134,15 @@ export default function Inscription() {
             />
           </div>
 
-          <label className="flex items-start gap-3 text-sm text-neutral-300">
-            <input type="checkbox" required className="mt-0.5 h-5 w-5 shrink-0 accent-[#39ff14]" />
+          <label className="flex items-start gap-3 text-sm text-muted">
+            <input type="checkbox" required className="mt-0.5 h-5 w-5 shrink-0 accent-accent-ink" />
             <span>J’ai 16 ans ou plus et j’accepte les conditions d’utilisation et la politique de confidentialité.</span>
           </label>
 
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 rounded-2xl bg-[#39ff14] py-4 text-base font-bold text-black disabled:opacity-60"
+            className="mt-2 rounded-2xl bg-accent py-4 text-base font-bold text-on-accent disabled:opacity-60"
           >
             {loading ? "Création en cours…" : "Créer mon compte"}
           </button>
@@ -150,16 +150,16 @@ export default function Inscription() {
           {status && (
             <p
               aria-live="polite"
-              className={`text-sm ${status.type === "error" ? "text-red-400" : "text-[#39ff14]"}`}
+              className={`text-sm ${status.type === "error" ? "text-danger" : "text-accent-ink"}`}
             >
               {status.text}
             </p>
           )}
         </form>
 
-        <p className="mt-auto pt-10 text-center text-sm text-neutral-400">
+        <p className="mt-auto pt-10 text-center text-sm text-muted">
           Déjà un compte?{" "}
-          <Link href="/connexion" className="font-bold text-[#39ff14]">
+          <Link href="/connexion" className="font-bold text-accent-ink">
             Connecte-toi
           </Link>
         </p>

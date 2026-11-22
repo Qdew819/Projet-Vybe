@@ -1,22 +1,53 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+  Couleurs de Vybe. Le thème est choisi par l'attribut data-theme sur <html>
+  ("dark" ou "light"). Sans attribut, c'est le mode sombre.
+  - accent     : vert fluo des boutons (texte noir dessus, dans les deux modes)
+  - accent-ink : vert pour le texte, les liens et les contours (plus foncé en clair pour rester lisible)
+*/
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #000000;
+  --foreground: #ffffff;
+  --surface: #0d0d0d;
+  --muted: #a3a3a3;
+  --subtle: #737373;
+  --line: #262626;
+  --accent: #39ff14;
+  --on-accent: #000000;
+  --accent-ink: #39ff14;
+  --danger: #f87171;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #f5f6f3;
+  --foreground: #0a0a0a;
+  --surface: #ffffff;
+  --muted: #525252;
+  --subtle: #6b6b6b;
+  --line: #d4d4d4;
+  --accent: #39ff14;
+  --on-accent: #000000;
+  --accent-ink: #1f7a0c;
+  --danger: #c81e1e;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
