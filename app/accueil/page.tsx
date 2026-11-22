@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Avatar from "../../components/Avatar";
 import { createClient } from "../../lib/supabase/client";
 import { useT } from "../../lib/i18n";
 import { isLanguage, setLanguage } from "../../lib/language";
@@ -12,6 +13,7 @@ export default function Accueil() {
   const router = useRouter();
   const t = useT();
   const [name, setName] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -35,7 +37,7 @@ export default function Accueil() {
       // En cas d'erreur de lecture, on affiche quand même l'accueil plutôt que de bloquer la personne.
       const { data: profile, error } = await supabase
         .from("profiles")
-        .select("birth_date")
+        .select("birth_date, avatar_url")
         .eq("id", data.user.id)
         .maybeSingle();
       if (error) {
@@ -55,6 +57,7 @@ export default function Accueil() {
       const google = (meta.full_name ?? meta.name) as string | undefined;
       const display = first ? [first, last].filter(Boolean).join(" ") : google;
       setName(display || data.user.email || "");
+      setAvatarUrl(typeof profile?.avatar_url === "string" && profile.avatar_url ? profile.avatar_url : null);
       setReady(true);
     });
   }, [router]);
@@ -97,7 +100,14 @@ export default function Accueil() {
           </svg>
         </Link>
 
-        <h1 className="text-4xl font-black italic tracking-tight">
+        <Avatar
+          src={avatarUrl}
+          initial={(name || "?").charAt(0).toUpperCase()}
+          alt={t("settings.avatarAlt")}
+          size={80}
+        />
+
+        <h1 className="mt-6 text-4xl font-black italic tracking-tight">
           {t("home.hello")} <span className="text-accent-ink">{name}</span>!
         </h1>
         <p className="mt-3 text-muted">{t("home.subtitle")}</p>

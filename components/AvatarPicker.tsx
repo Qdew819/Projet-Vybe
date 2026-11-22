@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
+import Avatar from "./Avatar";
 import CameraCapture from "./CameraCapture";
 import { useT } from "../lib/i18n";
 import { AVATAR_ACCEPT, PRESET_AVATARS } from "../lib/avatar";
@@ -75,19 +76,7 @@ export default function AvatarPicker({
 
   return (
     <div className="flex items-center gap-5">
-      <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full border-2 border-accent-ink bg-surface">
-        {src ? (
-          // Adresse Supabase, avatar ou aperçu local : affiché tel quel, sans l'optimisation de Next
-          <Image src={src} alt={t("settings.avatarAlt")} fill sizes="96px" unoptimized className="object-cover" />
-        ) : (
-          <span
-            aria-hidden="true"
-            className="flex h-full w-full items-center justify-center text-3xl font-black italic text-accent-ink"
-          >
-            {initial}
-          </span>
-        )}
-      </div>
+      <Avatar src={src} initial={initial} alt={t("settings.avatarAlt")} size={96} />
 
       <div className="flex flex-col items-start gap-2">
         <button
