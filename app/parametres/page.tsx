@@ -165,6 +165,8 @@ export default function Parametres() {
               <ProfileHeader
                 displayName={displayName}
                 username={savedUsername}
+                // Bio enregistrée : elle change ici après « Enregistrer »
+                bio={savedBio}
                 // Pas encore de publications ni d'abonnements dans la base : 0 en attendant
                 stats={<ProfileStats posts={0} followers={0} following={0} />}
                 onEditUsername={() => {

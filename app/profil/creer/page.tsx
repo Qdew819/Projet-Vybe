@@ -162,6 +162,8 @@ export default function CreerProfil() {
           <ProfileHeader
             displayName={metaName}
             username={username}
+            // Aperçu en direct pendant qu'on tape la bio
+            bio={bio.trim()}
             onEditUsername={() => {
               setError("");
               setEditingUsername(true);
