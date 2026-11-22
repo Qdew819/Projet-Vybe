@@ -37,6 +37,13 @@ export default function Accueil() {
         .select("birth_date")
         .eq("id", data.user.id)
         .maybeSingle();
+      if (error) {
+        console.error(
+          `Lecture du profil impossible : ${error.message} (code ${error.code})` +
+            (error.details ? ` — ${error.details}` : "") +
+            (error.hint ? ` — ${error.hint}` : "")
+        );
+      }
       if (!error && !profile?.birth_date) {
         router.replace("/profil/creer");
         return;
