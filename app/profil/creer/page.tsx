@@ -4,9 +4,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import AccountTypePicker, { type AccountType } from "../../../components/AccountTypePicker";
 import { useT } from "../../../lib/i18n";
+import { BIO_MAX } from "../../../lib/profile";
 import { createClient } from "../../../lib/supabase/client";
 
-const BIO_MAX = 160;
 const USERNAME_MIN = 3;
 const USERNAME_MAX = 20;
 // Lettres minuscules sans accent, chiffres, points et tirets bas

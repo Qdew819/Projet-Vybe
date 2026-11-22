@@ -108,7 +108,7 @@ const fr = {
   "settings.title": "Paramètres",
   "settings.save": "Enregistrer",
   "settings.saved": "C’est enregistré.",
-  "settings.saveError": "Impossible d’enregistrer ton choix pour l’instant. Réessaie dans un instant.",
+  "settings.saveError": "Impossible d’enregistrer tes modifications pour l’instant. Réessaie dans un instant.",
   "settings.loadError": "Impossible de charger tes paramètres pour l’instant. Réessaie dans un instant.",
 };
 
@@ -217,7 +217,7 @@ const en: Messages = {
   "settings.title": "Settings",
   "settings.save": "Save",
   "settings.saved": "Saved.",
-  "settings.saveError": "Couldn’t save your choice right now. Try again in a moment.",
+  "settings.saveError": "Couldn’t save your changes right now. Try again in a moment.",
   "settings.loadError": "Couldn’t load your settings right now. Try again in a moment.",
 };
 

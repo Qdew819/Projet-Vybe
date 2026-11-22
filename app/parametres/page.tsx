@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AccountTypePicker, { type AccountType } from "../../components/AccountTypePicker";
 import { useT } from "../../lib/i18n";
+import { BIO_MAX } from "../../lib/profile";
 import { createClient } from "../../lib/supabase/client";
 
 export default function Parametres() {
@@ -12,8 +13,11 @@ export default function Parametres() {
   const t = useT();
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState("");
-  const [saved, setSaved] = useState<AccountType>("public"); // valeur enregistrée dans la base
+  // Valeurs enregistrées dans la base, pour savoir si quelque chose a changé
+  const [savedType, setSavedType] = useState<AccountType>("public");
+  const [savedBio, setSavedBio] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("public");
+  const [bio, setBio] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -28,7 +32,7 @@ export default function Parametres() {
       }
       const { data: profile, error } = await supabase
         .from("profiles")
-        .select("is_private")
+        .select("is_private, bio")
         .eq("id", data.user.id)
         .maybeSingle();
       if (error) {
@@ -42,37 +46,47 @@ export default function Parametres() {
         router.replace("/profil/creer");
         return;
       }
-      const current: AccountType = profile.is_private ? "private" : "public";
+      const currentType: AccountType = profile.is_private ? "private" : "public";
+      const currentBio = typeof profile.bio === "string" ? profile.bio : "";
       setUserId(data.user.id);
-      setSaved(current);
-      setAccountType(current);
+      setSavedType(currentType);
+      setAccountType(currentType);
+      setSavedBio(currentBio);
+      setBio(currentBio);
       setReady(true);
     });
   }, [router]);
 
-  function choose(choice: AccountType) {
-    setAccountType(choice);
+  // Dès qu'on modifie quelque chose, on efface l'ancien message
+  function clearMessages() {
     setSuccess(false);
     setError("");
+  }
+
+  function chooseType(choice: AccountType) {
+    setAccountType(choice);
+    clearMessages();
   }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
-    setError("");
-    setSuccess(false);
+    clearMessages();
 
+    const newBio = bio.trim();
     const { error } = await createClient()
       .from("profiles")
-      .update({ is_private: accountType === "private" })
+      .update({ is_private: accountType === "private", bio: newBio || null })
       .eq("id", userId);
     setSaving(false);
     if (error) {
-      console.error(`Enregistrement du type de compte impossible : ${error.message} (code ${error.code})`);
+      console.error(`Enregistrement des paramètres impossible : ${error.message} (code ${error.code})`);
       setError(t("settings.saveError"));
       return;
     }
-    setSaved(accountType);
+    setSavedType(accountType);
+    setSavedBio(newBio);
+    setBio(newBio);
     setSuccess(true);
   }
 
@@ -82,7 +96,7 @@ export default function Parametres() {
     );
   }
 
-  const unchanged = accountType === saved;
+  const unchanged = accountType === savedType && bio.trim() === savedBio;
 
   return (
     <main className="bg-background text-foreground">
@@ -94,9 +108,33 @@ export default function Parametres() {
         <h1 className="mt-10 text-4xl font-black italic tracking-tight">{t("settings.title")}</h1>
 
         {userId && (
-          <div className="mt-10">
-            <AccountTypePicker value={accountType} onChange={choose} />
-          </div>
+          <>
+            <div className="mt-10">
+              <label htmlFor="bio" className="mb-1.5 block text-sm font-semibold">
+                {t("profile.bio")}
+              </label>
+              <textarea
+                id="bio"
+                rows={4}
+                maxLength={BIO_MAX}
+                placeholder={t("profile.bioPlaceholder")}
+                value={bio}
+                onChange={(e) => {
+                  setBio(e.target.value);
+                  clearMessages();
+                }}
+                aria-describedby="bio-count"
+                className="w-full resize-none rounded-xl border border-accent-ink/40 bg-surface px-4 py-3 text-base text-foreground placeholder:text-subtle outline-none focus:border-accent-ink"
+              />
+              <p id="bio-count" className="mt-1.5 text-right text-xs text-muted">
+                {bio.length}/{BIO_MAX}
+              </p>
+            </div>
+
+            <div className="mt-6">
+              <AccountTypePicker value={accountType} onChange={chooseType} />
+            </div>
+          </>
         )}
 
         <p aria-live="polite" className="mt-6 text-sm">
