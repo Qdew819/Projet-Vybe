@@ -112,6 +112,21 @@ const fr = {
 
   "settings.title": "Paramètres",
 
+  "sports.tabsLabel": "Tes sports",
+  "sports.others": "Autres",
+  "sports.add": "Ajouter tes sports",
+  "sports.title": "Tes sports",
+  "sports.searchLabel": "Rechercher un sport",
+  "sports.searchPlaceholder": "Rechercher un sport…",
+  "sports.yours": "Tes sports",
+  "sports.none": "Aucun sport pour l’instant. Choisis-en dans les suggestions ou cherche-les.",
+  "sports.remove": "Retirer",
+  "sports.suggestions": "Suggestions",
+  "sports.results": "Résultats",
+  "sports.noResult": "Aucun sport trouvé pour « {q} ».",
+  "sports.max": "Tu peux choisir jusqu’à 10 sports. Retires-en un pour en ajouter un autre.",
+  "sports.saveError": "Impossible d’enregistrer tes sports pour l’instant. Réessaie dans un instant.",
+
   "stats.posts": "Publications",
   "stats.followers": "Abonnés",
   "stats.following": "Abonnements",
@@ -259,6 +274,21 @@ const en: Messages = {
   "home.settings": "Settings",
 
   "settings.title": "Settings",
+
+  "sports.tabsLabel": "Your sports",
+  "sports.others": "More",
+  "sports.add": "Add your sports",
+  "sports.title": "Your sports",
+  "sports.searchLabel": "Search for a sport",
+  "sports.searchPlaceholder": "Search for a sport…",
+  "sports.yours": "Your sports",
+  "sports.none": "No sports yet. Pick some from the suggestions or search for them.",
+  "sports.remove": "Remove",
+  "sports.suggestions": "Suggestions",
+  "sports.results": "Results",
+  "sports.noResult": "No sport found for “{q}”.",
+  "sports.max": "You can choose up to 10 sports. Remove one to add another.",
+  "sports.saveError": "Couldn’t save your sports right now. Try again in a moment.",
 
   "stats.posts": "Posts",
   "stats.followers": "Followers",

@@ -7,6 +7,8 @@ import AccountTypePicker, { type AccountType } from "../../components/AccountTyp
 import AvatarPicker from "../../components/AvatarPicker";
 import ProfileHeader from "../../components/ProfileHeader";
 import ProfileStats from "../../components/ProfileStats";
+import SportsDialog from "../../components/SportsDialog";
+import SportsTabs from "../../components/SportsTabs";
 import UsernameDialog from "../../components/UsernameDialog";
 import { useT } from "../../lib/i18n";
 import { BIO_MAX, UNIQUE_VIOLATION } from "../../lib/profile";
@@ -25,6 +27,9 @@ export default function Parametres() {
   const [savedAvatar, setSavedAvatar] = useState<string | null>(null);
   const [editingUsername, setEditingUsername] = useState(false);
   const [displayName, setDisplayName] = useState("");
+  const [sports, setSports] = useState<string[]>([]);
+  const [activeSport, setActiveSport] = useState<string | null>(null);
+  const [editingSports, setEditingSports] = useState(false);
   const [accountType, setAccountType] = useState<AccountType>("public");
   const [bio, setBio] = useState("");
   const [saving, setSaving] = useState(false);
@@ -71,9 +76,37 @@ export default function Parametres() {
       setSavedBio(currentBio);
       setBio(currentBio);
       setSavedAvatar(typeof profile.avatar_url === "string" && profile.avatar_url ? profile.avatar_url : null);
+
+      // Sports lus à part : si la colonne n'existe pas encore, le reste de la page fonctionne quand même
+      const { data: sportsRow, error: sportsError } = await supabase
+        .from("profiles")
+        .select("sports")
+        .eq("id", data.user.id)
+        .maybeSingle();
+      if (sportsError) {
+        console.error(`Lecture des sports impossible : ${sportsError.message} (code ${sportsError.code})`);
+      } else if (Array.isArray(sportsRow?.sports)) {
+        const ids = sportsRow.sports.filter((id: unknown): id is string => typeof id === "string");
+        setSports(ids);
+        setActiveSport(ids[0] ?? null);
+      }
       setReady(true);
     });
   }, [router]);
+
+  // Fenêtre « Tes sports » : les sports sont enregistrés tout de suite.
+  // Renvoie le message d'erreur à afficher dans la fenêtre, ou null si c'est bon.
+  async function saveSports(newSports: string[]): Promise<string | null> {
+    const { error } = await createClient().from("profiles").update({ sports: newSports }).eq("id", userId);
+    if (error) {
+      console.error(`Enregistrement des sports impossible : ${error.message} (code ${error.code})`);
+      return t("sports.saveError");
+    }
+    setSports(newSports);
+    // L'onglet actif reste le même s'il est toujours choisi, sinon on passe au premier sport
+    setActiveSport((current) => (current && newSports.includes(current) ? current : (newSports[0] ?? null)));
+    return null;
+  }
 
   // Dès qu'on modifie quelque chose, on efface l'ancien message
   function clearMessages() {
@@ -200,6 +233,24 @@ export default function Parametres() {
                 confirmLabel={t("settings.save")}
                 onConfirm={saveUsername}
                 onClose={() => setEditingUsername(false)}
+              />
+
+              <div className="mt-5">
+                <SportsTabs
+                  sportIds={sports}
+                  activeId={activeSport}
+                  onSelect={setActiveSport}
+                  onEdit={() => {
+                    clearMessages();
+                    setEditingSports(true);
+                  }}
+                />
+              </div>
+              <SportsDialog
+                open={editingSports}
+                value={sports}
+                onConfirm={saveSports}
+                onClose={() => setEditingSports(false)}
               />
             </div>
 
