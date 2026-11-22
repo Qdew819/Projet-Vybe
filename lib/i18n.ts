@@ -103,6 +103,13 @@ const fr = {
   "home.hello": "Salut",
   "home.subtitle": "Tu es connecté. Les événements arrivent bientôt.",
   "home.signOut": "Se déconnecter",
+  "home.settings": "Paramètres",
+
+  "settings.title": "Paramètres",
+  "settings.save": "Enregistrer",
+  "settings.saved": "C’est enregistré.",
+  "settings.saveError": "Impossible d’enregistrer ton choix pour l’instant. Réessaie dans un instant.",
+  "settings.loadError": "Impossible de charger tes paramètres pour l’instant. Réessaie dans un instant.",
 };
 
 export type MessageKey = keyof typeof fr;
@@ -205,6 +212,13 @@ const en: Messages = {
   "home.hello": "Hi",
   "home.subtitle": "You’re logged in. Events are coming soon.",
   "home.signOut": "Log out",
+  "home.settings": "Settings",
+
+  "settings.title": "Settings",
+  "settings.save": "Save",
+  "settings.saved": "Saved.",
+  "settings.saveError": "Couldn’t save your choice right now. Try again in a moment.",
+  "settings.loadError": "Couldn’t load your settings right now. Try again in a moment.",
 };
 
 const dictionaries: Record<Language, Messages> = { fr, en };

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
 import { useT } from "../../lib/i18n";
@@ -79,10 +80,17 @@ export default function Accueil() {
         </h1>
         <p className="mt-3 text-muted">{t("home.subtitle")}</p>
 
+        <Link
+          href="/parametres"
+          className="mt-auto rounded-2xl border border-line py-4 text-center text-base font-bold"
+        >
+          {t("home.settings")}
+        </Link>
+
         <button
           type="button"
           onClick={signOut}
-          className="mt-auto rounded-2xl border border-accent-ink py-4 text-base font-bold text-accent-ink"
+          className="mt-3 rounded-2xl border border-accent-ink py-4 text-base font-bold text-accent-ink"
         >
           {t("home.signOut")}
         </button>

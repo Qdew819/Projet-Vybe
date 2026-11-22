@@ -2,7 +2,8 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { useT, type MessageKey } from "../../../lib/i18n";
+import AccountTypePicker, { type AccountType } from "../../../components/AccountTypePicker";
+import { useT } from "../../../lib/i18n";
 import { createClient } from "../../../lib/supabase/client";
 
 const BIO_MAX = 160;
@@ -12,13 +13,6 @@ const USERNAME_MAX = 20;
 const USERNAME_PATTERN = /^[a-z0-9._]+$/;
 const MIN_AGE = 16; // même âge minimum que l'inscription
 const ADULT_AGE = 18;
-
-type AccountType = "public" | "private";
-
-const accountOptions: { value: AccountType; label: MessageKey; hint: MessageKey }[] = [
-  { value: "public", label: "profile.public", hint: "profile.publicHint" },
-  { value: "private", label: "profile.private", hint: "profile.privateHint" },
-];
 
 // Date du jour au format AAAA-MM-JJ (heure locale), pour la limite du champ date
 function todayIso(): string {
@@ -210,39 +204,9 @@ export default function CreerProfil() {
           </p>
         </div>
 
-        <fieldset className="mt-6">
-          <legend className="mb-1 text-sm font-bold uppercase tracking-wide text-muted">
-            {t("profile.accountType")}
-          </legend>
-          <p className="mb-3 text-sm font-semibold">{t("profile.accountQuestion")}</p>
-          <div className="flex flex-col gap-3">
-            {accountOptions.map((o) => {
-              const selected = o.value === accountType;
-              return (
-                <label
-                  key={o.value}
-                  className={`flex cursor-pointer items-start gap-3 rounded-2xl border-2 bg-surface p-4 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent-ink ${
-                    selected ? "border-accent-ink" : "border-line"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="accountType"
-                    value={o.value}
-                    checked={selected}
-                    onChange={() => setChosenType(o.value)}
-                    className="mt-0.5 h-5 w-5 shrink-0 accent-accent-ink"
-                  />
-                  <span className="flex flex-col gap-1">
-                    <span className={`text-sm font-bold ${selected ? "text-accent-ink" : ""}`}>{t(o.label)}</span>
-                    <span className="text-xs leading-snug text-muted">{t(o.hint)}</span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-          <p className="mt-3 text-xs text-muted">{t("profile.accountNote")}</p>
-        </fieldset>
+        <div className="mt-6">
+          <AccountTypePicker value={accountType} onChange={setChosenType} note={t("profile.accountNote")} />
+        </div>
 
         {error && (
           <p aria-live="polite" className="mt-6 text-sm text-danger">
