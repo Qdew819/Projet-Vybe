@@ -8,6 +8,7 @@ import FollowButton from "../../../components/FollowButton";
 import ProfileBanner from "../../../components/ProfileBanner";
 import ProfileStats from "../../../components/ProfileStats";
 import ReportDialog, { type ReportReason } from "../../../components/ReportDialog";
+import { displayCityLabel } from "../../../lib/cities";
 import { followUser, unfollowUser, type FollowStatus } from "../../../lib/follows";
 import { useT } from "../../../lib/i18n";
 import { initialsOf } from "../../../lib/profile";
@@ -49,6 +50,7 @@ function ProfilPublic() {
   const [me, setMe] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [age, setAge] = useState<number | null>(null);
+  const [city, setCity] = useState<string | null>(null);
   const [counts, setCounts] = useState({ followers: 0, following: 0 });
   const [followStatus, setFollowStatus] = useState<FollowStatus>(null);
   const [blocked, setBlocked] = useState(false);
@@ -111,12 +113,16 @@ function ProfilPublic() {
       }
       setProfile(found as Profile);
 
-      const [followResult, blockResult, ageResult] = await Promise.all([
+      const [followResult, blockResult, ageResult, , cityResult] = await Promise.all([
         supabase.from("follows").select("status").eq("follower_id", myId).eq("followed_id", found.id).maybeSingle(),
         supabase.from("blocks").select("blocked_id").eq("blocker_id", myId).eq("blocked_id", found.id).maybeSingle(),
         supabase.rpc("get_age", { uid: found.id }),
         refreshCounts(found.id),
+        // Libellé de la ville, ou null si la personne ne l'affiche pas
+        supabase.rpc("get_profile_city", { uid: found.id }),
       ]);
+      if (cityResult.error) console.error(`Lecture de la ville impossible : ${cityResult.error.message}`);
+      else if (typeof cityResult.data === "string" && cityResult.data) setCity(displayCityLabel(cityResult.data));
       if (followResult.error) console.error(`Lecture de l'abonnement impossible : ${followResult.error.message}`);
       setFollowStatus((followResult.data?.status as FollowStatus) ?? null);
       if (blockResult.error) console.error(`Lecture du blocage impossible : ${blockResult.error.message}`);
@@ -260,7 +266,7 @@ function ProfilPublic() {
               <h1 className="truncate text-xl font-bold leading-tight">{name}</h1>
               <p className="truncate text-sm text-muted">{handle}</p>
               <p className="mt-0.5 text-sm text-muted">
-                {age !== null && <span>{t("profile.age").replace("{n}", String(age))}</span>}
+                {[age !== null ? t("profile.age").replace("{n}", String(age)) : null, city].filter(Boolean).join(" · ")}
               </p>
             </div>
           </div>

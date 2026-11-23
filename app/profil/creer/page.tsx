@@ -138,7 +138,7 @@ export default function CreerProfil() {
       }
       return;
     }
-    router.push("/accueil");
+    router.push("/profil/ville");
   }
 
   if (!ready) {

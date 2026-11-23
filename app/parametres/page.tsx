@@ -10,6 +10,7 @@ import SettingsLink from "../../components/SettingsLink";
 import SportsDialog from "../../components/SportsDialog";
 import SportsTabs from "../../components/SportsTabs";
 import UsernameDialog from "../../components/UsernameDialog";
+import { displayCityLabel } from "../../lib/cities";
 import { COVER_MAX_BYTES, isAcceptedCover, resizeCover, uploadCover } from "../../lib/cover";
 import { useT } from "../../lib/i18n";
 import { BIO_MAX, UNIQUE_VIOLATION } from "../../lib/profile";
@@ -29,6 +30,7 @@ export default function Parametres() {
   const [editingUsername, setEditingUsername] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [age, setAge] = useState<number | null>(null);
+  const [city, setCity] = useState<string | null>(null);
   const [pendingRequests, setPendingRequests] = useState(0);
   const [followCounts, setFollowCounts] = useState({ followers: 0, following: 0 });
   const [sports, setSports] = useState<string[]>([]);
@@ -88,7 +90,7 @@ export default function Parametres() {
       setSavedAvatar(typeof profile.avatar_url === "string" && profile.avatar_url ? profile.avatar_url : null);
 
       // Sports, photo de fond et âge lus à part : si l'un manque, le reste de la page fonctionne quand même
-      const [sportsResult, coverResult, ageResult, pendingResult, countsResult] = await Promise.all([
+      const [sportsResult, coverResult, ageResult, pendingResult, countsResult, cityResult] = await Promise.all([
         supabase.from("profiles").select("sports").eq("id", uid).maybeSingle(),
         supabase.from("profiles").select("cover_url").eq("id", uid).maybeSingle(),
         supabase.rpc("get_age", { uid }),
@@ -99,7 +101,13 @@ export default function Parametres() {
           .eq("followed_id", uid)
           .eq("status", "pending"),
         supabase.rpc("get_follow_counts", { uid }),
+        supabase.rpc("get_profile_city", { uid }),
       ]);
+      if (cityResult.error) {
+        console.error(`Lecture de la ville impossible : ${cityResult.error.message} (code ${cityResult.error.code})`);
+      } else if (typeof cityResult.data === "string" && cityResult.data) {
+        setCity(displayCityLabel(cityResult.data));
+      }
       if (pendingResult.error) {
         console.error(`Lecture des demandes d'abonnement impossible : ${pendingResult.error.message} (code ${pendingResult.error.code})`);
       } else {
@@ -312,9 +320,9 @@ export default function Parametres() {
               <div className="min-w-0 flex-1 pt-3">
                 <p className="truncate text-xl font-bold leading-tight">{displayName || savedUsername}</p>
                 <p className="truncate text-sm text-muted">@{savedUsername}</p>
-                {/* Âge, puis la ville plus tard (même ligne, séparée par « · ») */}
+                {/* Âge, puis la ville si elle est enregistrée (même ligne, séparée par « · ») */}
                 <p className="mt-0.5 text-sm text-muted">
-                  {age !== null && <span>{t("profile.age").replace("{n}", String(age))}</span>}
+                  {[age !== null ? t("profile.age").replace("{n}", String(age)) : null, city].filter(Boolean).join(" · ")}
                 </p>
               </div>
 
@@ -439,6 +447,17 @@ export default function Parametres() {
                     <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                       <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
                       <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                    </svg>
+                  }
+                />
+                <SettingsLink
+                  href="/parametres/localisation"
+                  title={t("settings.locationLink")}
+                  hint={t("settings.locationLinkHint")}
+                  icon={
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z" />
+                      <circle cx="12" cy="9" r="2.5" />
                     </svg>
                   }
                 />

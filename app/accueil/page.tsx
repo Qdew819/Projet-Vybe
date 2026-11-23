@@ -15,6 +15,7 @@ export default function Accueil() {
   const [name, setName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [pendingRequests, setPendingRequests] = useState(0);
+  const [missingCity, setMissingCity] = useState(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -70,6 +71,18 @@ export default function Accueil() {
         console.error(`Lecture des demandes d'abonnement impossible : ${pendingError.message} (code ${pendingError.code})`);
       } else {
         setPendingRequests(count ?? 0);
+      }
+
+      // Pas encore de ville : on propose de l'ajouter (rien n'est affiché si la lecture échoue)
+      const { data: location, error: locationError } = await supabase
+        .from("user_locations")
+        .select("user_id")
+        .eq("user_id", data.user.id)
+        .maybeSingle();
+      if (locationError) {
+        console.error(`Lecture de la ville impossible : ${locationError.message} (code ${locationError.code})`);
+      } else {
+        setMissingCity(!location);
       }
       setReady(true);
     });
@@ -159,6 +172,22 @@ export default function Accueil() {
           {t("home.hello")} <span className="text-accent-ink">{name}</span>!
         </h1>
         <p className="mt-3 text-muted">{t("home.subtitle")}</p>
+
+        {missingCity && (
+          <Link
+            href="/profil/ville"
+            className="mt-8 flex items-center gap-4 rounded-2xl border-2 border-line bg-surface p-4 transition-colors hover:border-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6 shrink-0 text-accent-ink" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z" />
+              <circle cx="12" cy="9" r="2.5" />
+            </svg>
+            <span className="min-w-0 flex-1 text-sm font-bold">{t("location.homeCard")}</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-muted" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </Link>
+        )}
 
         <button
           type="button"
