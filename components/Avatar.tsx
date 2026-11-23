@@ -6,15 +6,19 @@ export default function Avatar({
   initial,
   alt,
   size,
+  neon = false,
 }: {
   src: string | null;
   initial: string;
   alt: string;
   size: number; // en pixels
+  neon?: boolean; // bordure vert néon plus épaisse (photo posée sur la bannière)
 }) {
   return (
     <div
-      className="relative shrink-0 overflow-hidden rounded-full border-2 border-accent-ink bg-surface"
+      className={`relative shrink-0 overflow-hidden rounded-full bg-surface ${
+        neon ? "border-[3px] border-accent" : "border-2 border-accent-ink"
+      }`}
       style={{ width: size, height: size }}
     >
       {src ? (

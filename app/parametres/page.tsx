@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AccountTypePicker, { type AccountType } from "../../components/AccountTypePicker";
 import AvatarPicker from "../../components/AvatarPicker";
-import ProfileHeader from "../../components/ProfileHeader";
+import ProfileBanner from "../../components/ProfileBanner";
 import ProfileStats from "../../components/ProfileStats";
 import SportsDialog from "../../components/SportsDialog";
 import SportsTabs from "../../components/SportsTabs";
 import UsernameDialog from "../../components/UsernameDialog";
+import { COVER_MAX_BYTES, isAcceptedCover, resizeCover, uploadCover } from "../../lib/cover";
 import { useT } from "../../lib/i18n";
 import { BIO_MAX, UNIQUE_VIOLATION } from "../../lib/profile";
 import { createClient } from "../../lib/supabase/client";
@@ -27,6 +27,7 @@ export default function Parametres() {
   const [savedAvatar, setSavedAvatar] = useState<string | null>(null);
   const [editingUsername, setEditingUsername] = useState(false);
   const [displayName, setDisplayName] = useState("");
+  const [age, setAge] = useState<number | null>(null);
   const [sports, setSports] = useState<string[]>([]);
   const [activeSport, setActiveSport] = useState<string | null>(null);
   const [editingSports, setEditingSports] = useState(false);
@@ -36,6 +37,11 @@ export default function Parametres() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  // Photo de fond : adresse enregistrée, aperçu pendant l'envoi, état et message
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [coverMessage, setCoverMessage] = useState<{ kind: "error" | "success"; text: string } | null>(null);
 
   const avatar = useAvatarChoice(savedAvatar, (key) => {
     setSuccess(false);
@@ -49,10 +55,11 @@ export default function Parametres() {
         router.replace("/connexion");
         return;
       }
+      const uid = data.user.id;
       const { data: profile, error } = await supabase
         .from("profiles")
         .select("username, display_name, is_private, bio, avatar_url")
-        .eq("id", data.user.id)
+        .eq("id", uid)
         .maybeSingle();
       if (error) {
         console.error(`Lecture du profil impossible : ${error.message} (code ${error.code})`);
@@ -68,7 +75,7 @@ export default function Parametres() {
       const currentType: AccountType = profile.is_private ? "private" : "public";
       const currentBio = typeof profile.bio === "string" ? profile.bio : "";
       const currentUsername = typeof profile.username === "string" ? profile.username : "";
-      setUserId(data.user.id);
+      setUserId(uid);
       setSavedUsername(currentUsername);
       setDisplayName(typeof profile.display_name === "string" ? profile.display_name : "");
       setSavedType(currentType);
@@ -77,22 +84,79 @@ export default function Parametres() {
       setBio(currentBio);
       setSavedAvatar(typeof profile.avatar_url === "string" && profile.avatar_url ? profile.avatar_url : null);
 
-      // Sports lus à part : si la colonne n'existe pas encore, le reste de la page fonctionne quand même
-      const { data: sportsRow, error: sportsError } = await supabase
-        .from("profiles")
-        .select("sports")
-        .eq("id", data.user.id)
-        .maybeSingle();
-      if (sportsError) {
-        console.error(`Lecture des sports impossible : ${sportsError.message} (code ${sportsError.code})`);
-      } else if (Array.isArray(sportsRow?.sports)) {
-        const ids = sportsRow.sports.filter((id: unknown): id is string => typeof id === "string");
+      // Sports, photo de fond et âge lus à part : si l'un manque, le reste de la page fonctionne quand même
+      const [sportsResult, coverResult, ageResult] = await Promise.all([
+        supabase.from("profiles").select("sports").eq("id", uid).maybeSingle(),
+        supabase.from("profiles").select("cover_url").eq("id", uid).maybeSingle(),
+        supabase.rpc("get_age", { uid }),
+      ]);
+      if (sportsResult.error) {
+        console.error(`Lecture des sports impossible : ${sportsResult.error.message} (code ${sportsResult.error.code})`);
+      } else if (Array.isArray(sportsResult.data?.sports)) {
+        const ids = sportsResult.data.sports.filter((id: unknown): id is string => typeof id === "string");
         setSports(ids);
         setActiveSport(ids[0] ?? null);
+      }
+      if (coverResult.error) {
+        console.error(`Lecture de la photo de fond impossible : ${coverResult.error.message} (code ${coverResult.error.code})`);
+      } else if (typeof coverResult.data?.cover_url === "string" && coverResult.data.cover_url) {
+        setCoverUrl(coverResult.data.cover_url);
+      }
+      if (ageResult.error) {
+        console.error(`Calcul de l'âge impossible : ${ageResult.error.message} (code ${ageResult.error.code})`);
+      } else if (typeof ageResult.data === "number") {
+        setAge(ageResult.data);
       }
       setReady(true);
     });
   }, [router]);
+
+  // Libère l'aperçu local de la photo de fond quand il est remplacé ou quand on quitte la page
+  useEffect(() => {
+    return () => {
+      if (coverPreview) URL.revokeObjectURL(coverPreview);
+    };
+  }, [coverPreview]);
+
+  // Photo de fond : recadrée en 3:1, envoyée et enregistrée tout de suite (aperçu immédiat)
+  async function pickCover(file: File) {
+    setCoverMessage(null);
+    if (!isAcceptedCover(file)) {
+      setCoverMessage({ kind: "error", text: t("cover.typeError") });
+      return;
+    }
+    if (file.size > COVER_MAX_BYTES) {
+      setCoverMessage({ kind: "error", text: t("cover.sizeError") });
+      return;
+    }
+    setCoverUploading(true);
+    let blob: Blob;
+    try {
+      blob = await resizeCover(file);
+    } catch (err) {
+      console.error("Préparation de la photo de fond impossible :", err);
+      setCoverUploading(false);
+      setCoverMessage({ kind: "error", text: t("cover.readError") });
+      return;
+    }
+    setCoverPreview(URL.createObjectURL(blob));
+
+    const supabase = createClient();
+    try {
+      const url = await uploadCover(supabase, userId, blob);
+      const { error } = await supabase.from("profiles").update({ cover_url: url }).eq("id", userId);
+      if (error) throw error;
+      setCoverUrl(url);
+      setCoverMessage({ kind: "success", text: t("cover.saved") });
+    } catch (err) {
+      console.error("Enregistrement de la photo de fond impossible :", err);
+      setCoverMessage({ kind: "error", text: t("cover.uploadError") });
+    } finally {
+      // L'aperçu disparaît : on affiche la photo enregistrée (ou l'ancienne en cas d'erreur)
+      setCoverPreview(null);
+      setCoverUploading(false);
+    }
+  }
 
   // Fenêtre « Tes sports » : les sports sont enregistrés tout de suite.
   // Renvoie le message d'erreur à afficher dans la fenêtre, ou null si c'est bon.
@@ -140,7 +204,7 @@ export default function Parametres() {
     setSaving(true);
     const supabase = createClient();
 
-    // 1. Une nouvelle photo est envoyée d'abord, pour connaître son adresse
+    // 1. Une nouvelle photo de profil est envoyée d'abord, pour connaître son adresse
     let avatarUrl: string | null;
     try {
       avatarUrl = await avatar.upload(supabase, userId);
@@ -185,76 +249,117 @@ export default function Parametres() {
 
   return (
     <main className="bg-background text-foreground">
-      <form onSubmit={handleSubmit} className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-10 pt-8">
-        <Link href="/accueil" className="self-start text-sm font-semibold text-muted">
-          {t("common.back")}
-        </Link>
+      <form onSubmit={handleSubmit} className="mx-auto flex min-h-dvh w-full max-w-[500px] flex-col pb-10">
+        <h1 className="sr-only">{t("settings.title")}</h1>
 
-        <h1 className="mt-10 text-4xl font-black italic tracking-tight">{t("settings.title")}</h1>
+        {/* Bannière : photo de fond, « Retour », réglages et bouton appareil photo */}
+        <ProfileBanner
+          src={coverPreview ?? coverUrl}
+          busy={coverUploading}
+          disabled={!userId}
+          onPick={pickCover}
+          backHref="/accueil"
+          settingsHref="#reglages"
+        />
 
         {userId && (
-          <>
-            <div className="mt-10">
-              <ProfileHeader
-                displayName={displayName}
-                username={savedUsername}
-                // Bio enregistrée : elle change ici après « Enregistrer »
-                bio={savedBio}
-                // Pas encore de publications ni d'abonnements dans la base : 0 en attendant
-                stats={<ProfileStats posts={0} followers={0} following={0} />}
-                onEditUsername={() => {
-                  clearMessages();
-                  setEditingUsername(true);
-                }}
-                avatar={
-                  <AvatarPicker
-                    size={80}
-                    src={avatar.src}
-                    initial={(savedUsername || "?").charAt(0).toUpperCase()}
-                    busy={avatar.preparing || saving}
-                    onPickPhoto={(photo) => {
-                      clearMessages();
-                      avatar.pickPhoto(photo);
-                    }}
-                    onPickPreset={(src) => {
-                      clearMessages();
-                      avatar.pickPreset(src);
-                    }}
-                    onRemove={() => {
-                      clearMessages();
-                      avatar.remove();
-                    }}
-                  />
-                }
-              />
-              <UsernameDialog
-                open={editingUsername}
-                value={savedUsername}
-                confirmLabel={t("settings.save")}
-                onConfirm={saveUsername}
-                onClose={() => setEditingUsername(false)}
-              />
-
-              <div className="mt-5">
-                <SportsTabs
-                  sportIds={sports}
-                  activeId={activeSport}
-                  onSelect={setActiveSport}
-                  onEdit={() => {
+          <div className="px-6">
+            {/* Photo de profil qui chevauche le bas de la bannière, nom à droite, bouton tout à droite */}
+            <div className="flex items-start gap-4">
+              <div className="-mt-12 shrink-0 rounded-full bg-background p-1">
+                <AvatarPicker
+                  size={96}
+                  neon
+                  src={avatar.src}
+                  initial={(savedUsername || "?").charAt(0).toUpperCase()}
+                  busy={avatar.preparing || saving}
+                  onPickPhoto={(photo) => {
                     clearMessages();
-                    setEditingSports(true);
+                    avatar.pickPhoto(photo);
+                  }}
+                  onPickPreset={(src) => {
+                    clearMessages();
+                    avatar.pickPreset(src);
+                  }}
+                  onRemove={() => {
+                    clearMessages();
+                    avatar.remove();
                   }}
                 />
               </div>
-              <SportsDialog
-                open={editingSports}
-                value={sports}
-                onConfirm={saveSports}
-                onClose={() => setEditingSports(false)}
+
+              <div className="min-w-0 flex-1 pt-3">
+                <p className="truncate text-xl font-bold leading-tight">{displayName || savedUsername}</p>
+                <p className="truncate text-sm text-muted">@{savedUsername}</p>
+                {/* Âge, puis la ville plus tard (même ligne, séparée par « · ») */}
+                <p className="mt-0.5 text-sm text-muted">
+                  {age !== null && <span>{t("profile.age").replace("{n}", String(age))}</span>}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  clearMessages();
+                  setEditingUsername(true);
+                }}
+                aria-haspopup="dialog"
+                className="mt-3 flex max-w-30 shrink-0 items-center gap-1.5 rounded-xl border-2 border-accent-ink px-2.5 py-1.5 text-left text-xs font-bold leading-tight text-accent-ink transition-colors hover:bg-accent-ink/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+                </svg>
+                {t("profile.editUsername")}
+              </button>
+            </div>
+
+            {(coverUploading || coverMessage) && (
+              <p aria-live="polite" className={`mt-3 text-sm ${coverMessage?.kind === "error" ? "text-danger" : "text-accent-ink"}`}>
+                {coverUploading ? t("cover.uploading") : coverMessage?.text}
+              </p>
+            )}
+
+            {/* Bio enregistrée : elle change ici après « Enregistrer » */}
+            {savedBio && <p className="mt-4 whitespace-pre-line break-words text-sm leading-snug">{savedBio}</p>}
+
+            {/* Pas encore de publications ni d'abonnements dans la base : 0 en attendant */}
+            <div className="mt-5">
+              <ProfileStats posts={0} followers={0} following={0} />
+            </div>
+
+            <div className="mt-5">
+              <SportsTabs
+                sportIds={sports}
+                activeId={activeSport}
+                onSelect={setActiveSport}
+                onEdit={() => {
+                  clearMessages();
+                  setEditingSports(true);
+                }}
               />
             </div>
 
-            <div className="mt-6">
+            <UsernameDialog
+              open={editingUsername}
+              value={savedUsername}
+              confirmLabel={t("settings.save")}
+              onConfirm={saveUsername}
+              onClose={() => setEditingUsername(false)}
+            />
+            <SportsDialog
+              open={editingSports}
+              value={sports}
+              onConfirm={saveSports}
+              onClose={() => setEditingSports(false)}
+            />
+
+            {/* Réglages modifiables, même style qu'avant ; l'icône de réglages de la bannière mène ici */}
+            <section id="reglages" aria-labelledby="titre-reglages" className="mt-10 scroll-mt-6">
+              <h2 id="titre-reglages" className="mb-4 text-sm font-bold uppercase tracking-wide text-muted">
+                {t("settings.editSection")}
+              </h2>
+
               <label htmlFor="bio" className="mb-1.5 block text-sm font-semibold">
                 {t("profile.bio")}
               </label>
@@ -274,22 +379,22 @@ export default function Parametres() {
               <p id="bio-count" className="mt-1.5 text-right text-xs text-muted">
                 {bio.length}/{BIO_MAX}
               </p>
-            </div>
 
-            <div className="mt-6">
-              <AccountTypePicker value={accountType} onChange={chooseType} />
-            </div>
-          </>
+              <div className="mt-6">
+                <AccountTypePicker value={accountType} onChange={chooseType} />
+              </div>
+            </section>
+          </div>
         )}
 
-        <p aria-live="polite" className="mt-6 text-sm">
+        <p aria-live="polite" className="mt-6 px-6 text-sm">
           {loadFailed && <span className="text-danger">{t("settings.loadError")}</span>}
           {error && <span className="text-danger">{error}</span>}
           {success && <span className="text-accent-ink">{t("settings.saved")}</span>}
         </p>
 
         {userId && (
-          <div className="mt-auto pt-10">
+          <div className="mt-auto px-6 pt-10">
             <button
               type="submit"
               disabled={saving || avatar.preparing || unchanged}

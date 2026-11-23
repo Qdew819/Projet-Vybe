@@ -111,6 +111,19 @@ const fr = {
   "home.settings": "Paramètres",
 
   "settings.title": "Paramètres",
+  "settings.editSection": "Modifier ton profil",
+
+  "cover.alt": "Ta photo de fond",
+  "cover.change": "Changer la photo de fond",
+  "cover.settings": "Aller aux réglages du profil",
+  "cover.uploading": "Envoi de la photo de fond…",
+  "cover.typeError": "Choisis une image au format JPEG, PNG ou WebP.",
+  "cover.sizeError": "Cette image est trop lourde. Choisis-en une de 10 Mo maximum.",
+  "cover.readError": "Impossible de lire cette image. Essaies-en une autre.",
+  "cover.uploadError": "Impossible d’enregistrer ta photo de fond pour l’instant. Réessaie dans un instant.",
+  "cover.saved": "Ta photo de fond est enregistrée.",
+
+  "profile.age": "{n} ans",
 
   "sports.tabsLabel": "Tes sports",
   "sports.others": "Autres",
@@ -274,6 +287,19 @@ const en: Messages = {
   "home.settings": "Settings",
 
   "settings.title": "Settings",
+  "settings.editSection": "Edit your profile",
+
+  "cover.alt": "Your cover photo",
+  "cover.change": "Change cover photo",
+  "cover.settings": "Go to profile settings",
+  "cover.uploading": "Uploading cover photo…",
+  "cover.typeError": "Choose a JPEG, PNG or WebP image.",
+  "cover.sizeError": "This image is too large. Choose one up to 10 MB.",
+  "cover.readError": "Couldn’t read this image. Try another one.",
+  "cover.uploadError": "Couldn’t save your cover photo right now. Try again in a moment.",
+  "cover.saved": "Your cover photo is saved.",
+
+  "profile.age": "{n} years old",
 
   "sports.tabsLabel": "Your sports",
   "sports.others": "More",

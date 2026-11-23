@@ -19,6 +19,10 @@
   --on-accent: #000000;
   --accent-ink: #39ff14;
   --danger: #f87171;
+  /* Bannière sans photo de fond : dégradé sombre avec une touche de vert néon */
+  --cover-start: #050805;
+  --cover-end: #12261a;
+  --cover-glow: rgba(57, 255, 20, 0.28);
 }
 
 :root[data-theme="light"] {
@@ -33,6 +37,10 @@
   --on-accent: #000000;
   --accent-ink: #1f7a0c;
   --danger: #c81e1e;
+  /* Reste sombre en thème clair : les boutons blancs posés dessus restent lisibles */
+  --cover-start: #1a2a1d;
+  --cover-end: #2f4a35;
+  --cover-glow: rgba(57, 255, 20, 0.35);
 }
 
 @theme inline {

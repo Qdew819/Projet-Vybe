@@ -19,7 +19,9 @@ export default function AvatarPicker({
   onPickPreset,
   onRemove,
   size = 112,
+  neon = false,
 }: {
+  neon?: boolean; // bordure vert néon plus épaisse
   src: string | null;
   initial: string;
   busy: boolean;
@@ -89,7 +91,7 @@ export default function AvatarPicker({
         title={t("settings.avatarChange")}
         className="group relative rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent-ink disabled:opacity-60"
       >
-        <Avatar src={src} initial={initial} alt={t("settings.avatarAlt")} size={size} />
+        <Avatar src={src} initial={initial} alt={t("settings.avatarAlt")} size={size} neon={neon} />
         <span
           aria-hidden="true"
           className="absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-full border-[3px] border-background bg-accent text-on-accent transition-transform group-hover:scale-110"
