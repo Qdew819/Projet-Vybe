@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import AppShell from "../../components/AppShell";
 import { useRouter } from "next/navigation";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import FollowButton from "../../components/FollowButton";
@@ -272,7 +272,12 @@ export default function Personnes() {
 
   if (!ready) {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-background text-muted">{t("common.loading")}</main>
+      <AppShell active="communaute">
+        <h1 className="sr-only">{t("nav.community")}</h1>
+        <div role="status" className="flex flex-1 items-center justify-center text-muted">
+          {t("common.loading")}
+        </div>
+      </AppShell>
     );
   }
 
@@ -296,12 +301,9 @@ export default function Personnes() {
   const confirmHandle = !confirm ? "" : confirm.person.username ? `@${confirm.person.username}` : nameOf(confirm.person);
 
   return (
-    <main className="bg-background text-foreground">
-      <div className="mx-auto flex min-h-dvh w-full max-w-[500px] flex-col px-6 pb-12 pt-8">
-        <Link href="/accueil" className="self-start text-sm font-semibold text-muted">
-          {t("common.back")}
-        </Link>
-        <h1 className="mt-8 text-3xl font-black italic tracking-tight">{t("people.title")}</h1>
+    <AppShell active="communaute">
+      <div className="flex flex-1 flex-col px-6 pt-8">
+        <h1 className="text-3xl font-black italic tracking-tight">{t("nav.community")}</h1>
 
         {/* Messages des actions (suivre, accepter…) */}
         <p aria-live="polite" className={`mt-3 min-h-5 text-sm ${message?.kind === "error" ? "text-danger" : "text-accent-ink"}`}>
@@ -426,6 +428,6 @@ export default function Personnes() {
         onConfirm={confirmRemove}
         onClose={() => setConfirm(null)}
       />
-    </main>
+    </AppShell>
   );
 }

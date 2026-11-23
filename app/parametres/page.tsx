@@ -45,6 +45,7 @@ export default function Parametres() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   // Photo de fond : adresse enregistrée, aperçu pendant l'envoi, état et message
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
@@ -222,6 +223,13 @@ export default function Parametres() {
     return message;
   }
 
+  async function signOut() {
+    setSigningOut(true);
+    const { error } = await createClient().auth.signOut();
+    if (error) console.error(`Déconnexion impossible : ${error.message}`);
+    router.replace("/");
+  }
+
   // Dès qu'on modifie quelque chose, on efface l'ancien message
   function clearMessages() {
     setSuccess(false);
@@ -308,7 +316,7 @@ export default function Parametres() {
           busy={coverUploading}
           disabled={!userId}
           onPick={pickCover}
-          backHref="/accueil"
+          backHref="/profil"
           settingsHref="#reglages"
         />
 
@@ -530,6 +538,19 @@ export default function Parametres() {
             </button>
           </div>
         )}
+
+        {/* Déconnexion : seulement ici (plus sur l'accueil) */}
+        <div className={`px-6 ${userId ? "pt-4" : "mt-auto pt-10"}`}>
+          <button
+            type="button"
+            onClick={signOut}
+            disabled={signingOut}
+            aria-busy={signingOut}
+            className="w-full rounded-2xl border border-accent-ink py-4 text-base font-bold text-accent-ink disabled:opacity-60"
+          >
+            {signingOut ? t("common.wait") : t("home.signOut")}
+          </button>
+        </div>
       </form>
     </main>
   );

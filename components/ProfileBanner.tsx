@@ -20,13 +20,19 @@ export default function ProfileBanner({
   onPick,
   backHref,
   settingsHref,
+  settingsLabel,
+  onShare,
+  shareLabel,
 }: {
   src: string | null;
   busy?: boolean;
   disabled?: boolean;
   onPick?: (file: File) => void;
-  backHref: string;
+  backHref?: string; // sans backHref, pas de bouton Retour (page à onglets)
   settingsHref?: string;
+  settingsLabel?: string;
+  onShare?: () => void; // bouton de partage à gauche de l'icône de réglages
+  shareLabel?: string;
 }) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,20 +62,41 @@ export default function ProfileBanner({
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-1/3 bg-linear-to-b from-black/30 to-transparent" />
 
       <div className="absolute inset-x-0 top-0 flex items-center justify-between p-4">
-        <Link href={backHref} className={`${overlayButton} gap-1.5 px-3.5 py-2 text-sm font-semibold`}>
-          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-          {t("common.back")}
-        </Link>
-        {settingsHref && (
-          <Link href={settingsHref} aria-label={t("cover.settings")} title={t("cover.settings")} className={`${overlayButton} h-10 w-10`}>
-            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <path d={GEAR_PATH} />
-              <circle cx="12" cy="12" r="3" />
+        {backHref ? (
+          <Link href={backHref} className={`${overlayButton} gap-1.5 px-3.5 py-2 text-sm font-semibold`}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 18l-6-6 6-6" />
             </svg>
+            {t("common.back")}
           </Link>
+        ) : (
+          <span />
         )}
+        <div className="flex items-center gap-2">
+          {onShare && (
+            <button type="button" onClick={onShare} aria-label={shareLabel} title={shareLabel} className={`${overlayButton} h-11 w-11`}>
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+              </svg>
+            </button>
+          )}
+          {settingsHref && (
+            <Link
+              href={settingsHref}
+              aria-label={settingsLabel ?? t("cover.settings")}
+              title={settingsLabel ?? t("cover.settings")}
+              className={`${overlayButton} ${onShare ? "h-11 w-11" : "h-10 w-10"}`}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d={GEAR_PATH} />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </Link>
+          )}
+        </div>
       </div>
 
       {onPick && (
