@@ -1,7 +1,7 @@
-import type { Language } from "./language";
-
-// Liste des sports proposés sur Vybe : [identifiant, nom français, nom anglais, emoji, mots-clés de recherche]
-// L'identifiant est enregistré dans profiles.sports : ne jamais le changer une fois utilisé.
+// Ancienne liste des sports, codée en dur, utilisée avant les tables public.sports et public.user_sports.
+// Ses identifiants étaient enregistrés dans profiles.sports. On ne la garde que pour importer ces anciens
+// choix une seule fois dans user_sports (lib/userSports.ts) : ne plus s'en servir pour afficher des sports.
+// [identifiant, nom français, nom anglais, emoji, mots-clés de recherche]
 type SportRow = [id: string, fr: string, en: string, emoji: string, keywords?: string];
 
 const SPORT_ROWS: SportRow[] = [
@@ -288,7 +288,7 @@ const SPORT_ROWS: SportRow[] = [
   ["tug-of-war", "Tir à la corde", "Tug of war", "🪢"],
 ];
 
-export type Sport = { id: string; fr: string; en: string; emoji: string; search: string };
+type LegacySport = { id: string; fr: string; en: string };
 
 // Texte sans accents ni majuscules, pour que « eSCRime », « escrime » et « éscrime » donnent le même résultat
 export function normalizeSearch(text: string): string {
@@ -297,67 +297,13 @@ export function normalizeSearch(text: string): string {
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/[’'`-]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
-export const SPORTS: Sport[] = SPORT_ROWS.map(([id, fr, en, emoji, keywords = ""]) => ({
-  id,
-  fr,
-  en,
-  emoji,
-  search: normalizeSearch(`${fr} ${en} ${keywords}`),
-}));
+const BY_ID = new Map<string, LegacySport>(SPORT_ROWS.map(([id, fr, en]) => [id, { id, fr, en }]));
 
-const BY_ID = new Map(SPORTS.map((sport) => [sport.id, sport]));
-
-export function getSport(id: string): Sport | undefined {
+// Ancien sport (identifiant de profiles.sports) : sert seulement à retrouver le même sport dans public.sports
+export function getLegacySport(id: string): LegacySport | undefined {
   return BY_ID.get(id);
-}
-
-export function sportName(sport: Sport, language: Language): string {
-  return language === "en" ? sport.en : sport.fr;
-}
-
-// Suggestions quand la recherche est vide : les sports les plus pratiqués ici
-export const POPULAR_SPORT_IDS = [
-  "hockey",
-  "soccer",
-  "basketball",
-  "football",
-  "baseball",
-  "volleyball",
-  "tennis",
-  "pickleball",
-  "running",
-  "cycling",
-  "swimming",
-  "golf",
-  "alpine-skiing",
-  "snowboarding",
-  "badminton",
-  "strength-training",
-];
-
-export const MAX_SPORTS = 10;
-
-// Recherche : les sports dont un mot commence par la recherche passent en premier, puis ceux qui la contiennent
-export function searchSports(query: string, language: Language, limit = 30): Sport[] {
-  const q = normalizeSearch(query);
-  if (!q) return [];
-  const scored: { sport: Sport; score: number }[] = [];
-  for (const sport of SPORTS) {
-    const name = normalizeSearch(sportName(sport, language));
-    let score = -1;
-    if (name === q) score = 0;
-    else if (name.startsWith(q)) score = 1;
-    else if (name.split(/\s+/).some((word) => word.startsWith(q))) score = 2;
-    else if (sport.search.split(/\s+/).some((word) => word.startsWith(q))) score = 3;
-    // Recherche à l'intérieur des mots seulement à partir de 5 lettres (sinon « ping » trouverait « jumping »)
-    else if (q.length >= 5 && sport.search.includes(q)) score = 4;
-    if (score >= 0) scored.push({ sport, score });
-  }
-  return scored
-    .sort((a, b) => a.score - b.score || sportName(a.sport, language).localeCompare(sportName(b.sport, language)))
-    .slice(0, limit)
-    .map((entry) => entry.sport);
 }

@@ -8,11 +8,13 @@ import FollowButton from "../../../components/FollowButton";
 import ProfileBanner from "../../../components/ProfileBanner";
 import ProfileStats from "../../../components/ProfileStats";
 import ReportDialog, { type ReportReason } from "../../../components/ReportDialog";
+import SportsTabs from "../../../components/SportsTabs";
 import { displayCityLabel } from "../../../lib/cities";
 import { followUser, unfollowUser, type FollowStatus } from "../../../lib/follows";
 import { useT } from "../../../lib/i18n";
 import { initialsOf } from "../../../lib/profile";
 import { createClient } from "../../../lib/supabase/client";
+import { fetchUserSports, type UserSport } from "../../../lib/userSports";
 
 type Profile = {
   id: string;
@@ -51,6 +53,8 @@ function ProfilPublic() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [age, setAge] = useState<number | null>(null);
   const [city, setCity] = useState<string | null>(null);
+  const [sports, setSports] = useState<UserSport[]>([]);
+  const [activeSport, setActiveSport] = useState<number | null>(null);
   const [counts, setCounts] = useState({ followers: 0, following: 0 });
   const [followStatus, setFollowStatus] = useState<FollowStatus>(null);
   const [blocked, setBlocked] = useState(false);
@@ -113,14 +117,21 @@ function ProfilPublic() {
       }
       setProfile(found as Profile);
 
-      const [followResult, blockResult, ageResult, , cityResult] = await Promise.all([
+      const [followResult, blockResult, ageResult, , cityResult, sportsResult] = await Promise.all([
         supabase.from("follows").select("status").eq("follower_id", myId).eq("followed_id", found.id).maybeSingle(),
         supabase.from("blocks").select("blocked_id").eq("blocker_id", myId).eq("blocked_id", found.id).maybeSingle(),
         supabase.rpc("get_age", { uid: found.id }),
         refreshCounts(found.id),
         // Libellé de la ville, ou null si la personne ne l'affiche pas
         supabase.rpc("get_profile_city", { uid: found.id }),
+        // Sports de user_sports, dans l'ordre d'ajout (vide si la lecture échoue)
+        fetchUserSports(supabase, found.id).catch((err: unknown) => {
+          console.error("Lecture des sports impossible :", err);
+          return [] as UserSport[];
+        }),
       ]);
+      setSports(sportsResult);
+      setActiveSport(sportsResult[0]?.sport.id ?? null);
       if (cityResult.error) console.error(`Lecture de la ville impossible : ${cityResult.error.message}`);
       else if (typeof cityResult.data === "string" && cityResult.data) setCity(displayCityLabel(cityResult.data));
       if (followResult.error) console.error(`Lecture de l'abonnement impossible : ${followResult.error.message}`);
@@ -276,6 +287,13 @@ function ProfilPublic() {
           <div className="mt-5">
             <ProfileStats followers={counts.followers} following={counts.following} />
           </div>
+
+          {/* Masquée s'il n'y a aucun sport */}
+          {sports.length > 0 && (
+            <div className="mt-5">
+              <SportsTabs sports={sports} activeId={activeSport} onSelect={setActiveSport} />
+            </div>
+          )}
 
           {/* Actions : bouton principal (caché si bloqué) et menu « ⋯ » */}
           <div className="mt-5 flex items-center gap-2">

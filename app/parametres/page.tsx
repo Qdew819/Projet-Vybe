@@ -7,14 +7,15 @@ import AvatarPicker from "../../components/AvatarPicker";
 import ProfileBanner from "../../components/ProfileBanner";
 import ProfileStats from "../../components/ProfileStats";
 import SettingsLink from "../../components/SettingsLink";
-import SportsDialog from "../../components/SportsDialog";
+import SportEditDialog from "../../components/SportEditDialog";
 import SportsTabs from "../../components/SportsTabs";
 import UsernameDialog from "../../components/UsernameDialog";
 import { displayCityLabel } from "../../lib/cities";
 import { COVER_MAX_BYTES, isAcceptedCover, resizeCover, uploadCover } from "../../lib/cover";
-import { useT } from "../../lib/i18n";
+import { useT, type MessageKey } from "../../lib/i18n";
 import { BIO_MAX, UNIQUE_VIOLATION } from "../../lib/profile";
 import { createClient } from "../../lib/supabase/client";
+import { LEVEL_LOWER, fetchCatalog, loadMySports, saveMySports, withDetails, type SportLevel, type UserSport } from "../../lib/userSports";
 import { useAvatarChoice } from "../../lib/useAvatarChoice";
 
 export default function Parametres() {
@@ -33,9 +34,11 @@ export default function Parametres() {
   const [city, setCity] = useState<string | null>(null);
   const [pendingRequests, setPendingRequests] = useState(0);
   const [followCounts, setFollowCounts] = useState({ followers: 0, following: 0 });
-  const [sports, setSports] = useState<string[]>([]);
-  const [activeSport, setActiveSport] = useState<string | null>(null);
-  const [editingSports, setEditingSports] = useState(false);
+  const [sports, setSports] = useState<UserSport[]>([]);
+  const [activeSport, setActiveSport] = useState<number | null>(null);
+  // Sport touché dans l'en-tête : fenêtre pour changer son niveau ou le retirer
+  const [editingSport, setEditingSport] = useState<number | null>(null);
+  const [sportMessage, setSportMessage] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("public");
   const [bio, setBio] = useState("");
   const [saving, setSaving] = useState(false);
@@ -91,7 +94,11 @@ export default function Parametres() {
 
       // Sports, photo de fond et âge lus à part : si l'un manque, le reste de la page fonctionne quand même
       const [sportsResult, coverResult, ageResult, pendingResult, countsResult, cityResult] = await Promise.all([
-        supabase.from("profiles").select("sports").eq("id", uid).maybeSingle(),
+        // Sports de user_sports (avec l'import unique des anciens sports de profiles.sports)
+        Promise.all([loadMySports(supabase, uid), fetchCatalog(supabase)]).then(
+          ([choices, catalog]) => ({ data: withDetails(choices, catalog), error: null }),
+          (err: unknown) => ({ data: null, error: err })
+        ),
         supabase.from("profiles").select("cover_url").eq("id", uid).maybeSingle(),
         supabase.rpc("get_age", { uid }),
         // Demandes d'abonnement en attente : seulement le nombre (pastille)
@@ -119,12 +126,11 @@ export default function Parametres() {
         const row = Array.isArray(countsResult.data) ? countsResult.data[0] : countsResult.data;
         setFollowCounts({ followers: Number(row?.followers ?? 0), following: Number(row?.following ?? 0) });
       }
-      if (sportsResult.error) {
-        console.error(`Lecture des sports impossible : ${sportsResult.error.message} (code ${sportsResult.error.code})`);
-      } else if (Array.isArray(sportsResult.data?.sports)) {
-        const ids = sportsResult.data.sports.filter((id: unknown): id is string => typeof id === "string");
-        setSports(ids);
-        setActiveSport(ids[0] ?? null);
+      if (sportsResult.error || !sportsResult.data) {
+        console.error("Lecture des sports impossible :", sportsResult.error);
+      } else {
+        setSports(sportsResult.data);
+        setActiveSport(sportsResult.data[0]?.sport.id ?? null);
       }
       if (coverResult.error) {
         console.error(`Lecture de la photo de fond impossible : ${coverResult.error.message} (code ${coverResult.error.code})`);
@@ -187,18 +193,33 @@ export default function Parametres() {
     }
   }
 
-  // Fenêtre « Tes sports » : les sports sont enregistrés tout de suite.
-  // Renvoie le message d'erreur à afficher dans la fenêtre, ou null si c'est bon.
-  async function saveSports(newSports: string[]): Promise<string | null> {
-    const { error } = await createClient().from("profiles").update({ sports: newSports }).eq("id", userId);
-    if (error) {
-      console.error(`Enregistrement des sports impossible : ${error.message} (code ${error.code})`);
-      return t("sports.saveError");
-    }
-    setSports(newSports);
-    // L'onglet actif reste le même s'il est toujours choisi, sinon on passe au premier sport
-    setActiveSport((current) => (current && newSports.includes(current) ? current : (newSports[0] ?? null)));
+  // Enregistre la nouvelle liste de sports (niveau changé ou sport retiré) et met l'en-tête à jour
+  async function updateSports(next: UserSport[]): Promise<MessageKey | null> {
+    const message = await saveMySports(
+      createClient(),
+      userId,
+      next.map(({ sport, level }) => ({ sportId: sport.id, level }))
+    );
+    if (message) return message;
+    setSports(next);
+    setActiveSport((current) => (current && next.some((s) => s.sport.id === current) ? current : (next[0]?.sport.id ?? null)));
     return null;
+  }
+
+  async function changeSportLevel(sportId: number, level: SportLevel): Promise<MessageKey | null> {
+    const message = await updateSports(sports.map((s) => (s.sport.id === sportId ? { ...s, level } : s)));
+    const sport = sports.find((s) => s.sport.id === sportId);
+    if (!message && sport) {
+      setSportMessage(t("sports.levelSaved").replace("{name}", sport.sport.name).replace("{level}", t(LEVEL_LOWER[level])));
+    }
+    return message;
+  }
+
+  async function removeSport(sportId: number): Promise<MessageKey | null> {
+    const sport = sports.find((s) => s.sport.id === sportId);
+    const message = await updateSports(sports.filter((s) => s.sport.id !== sportId));
+    if (!message && sport) setSportMessage(t("sports.removedOne").replace("{name}", sport.sport.name));
+    return message;
   }
 
   // Dès qu'on modifie quelque chose, on efface l'ancien message
@@ -357,17 +378,38 @@ export default function Parametres() {
               <ProfileStats posts={0} followers={followCounts.followers} following={followCounts.following} />
             </div>
 
-            <div className="mt-5">
-              <SportsTabs
-                sportIds={sports}
-                activeId={activeSport}
-                onSelect={setActiveSport}
-                onEdit={() => {
-                  clearMessages();
-                  setEditingSports(true);
-                }}
-              />
-            </div>
+            {/* Masquée s'il n'y a aucun sport (la ligne « Sports et niveaux » plus bas permet d'en ajouter) */}
+            {sports.length > 0 && (
+              <div className="mt-5">
+                <SportsTabs
+                  sports={sports}
+                  activeId={activeSport}
+                  opensDialog
+                  onSelect={(id) => {
+                    clearMessages();
+                    setSportMessage("");
+                    setActiveSport(id);
+                    setEditingSport(id);
+                  }}
+                  editHref="/parametres/sports"
+                />
+              </div>
+            )}
+            <p aria-live="polite" className={`text-sm font-semibold text-accent-ink ${sportMessage ? "mt-2" : "sr-only"}`}>
+              {sportMessage}
+            </p>
+            {(() => {
+              const editing = sports.find((s) => s.sport.id === editingSport);
+              return editing ? (
+                <SportEditDialog
+                  key={editing.sport.id}
+                  sport={editing}
+                  onSave={(level) => changeSportLevel(editing.sport.id, level)}
+                  onRemove={() => removeSport(editing.sport.id)}
+                  onClose={() => setEditingSport(null)}
+                />
+              ) : null;
+            })()}
 
             <UsernameDialog
               open={editingUsername}
@@ -375,12 +417,6 @@ export default function Parametres() {
               confirmLabel={t("settings.save")}
               onConfirm={saveUsername}
               onClose={() => setEditingUsername(false)}
-            />
-            <SportsDialog
-              open={editingSports}
-              value={sports}
-              onConfirm={saveSports}
-              onClose={() => setEditingSports(false)}
             />
 
             {/* Réglages modifiables, même style qu'avant ; l'icône de réglages de la bannière mène ici */}
@@ -436,6 +472,17 @@ export default function Parametres() {
                     <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                       <rect x="4" y="11" width="16" height="10" rx="2" />
                       <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                    </svg>
+                  }
+                />
+                <SettingsLink
+                  href="/parametres/sports"
+                  title={t("settings.sportsLink")}
+                  hint={t("settings.sportsLinkHint")}
+                  icon={
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18M3 12h18" />
                     </svg>
                   }
                 />

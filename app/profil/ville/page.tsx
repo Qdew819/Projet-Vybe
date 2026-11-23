@@ -52,7 +52,7 @@ export default function OuHabitesTu() {
       setError(t("location.saveError"));
       return;
     }
-    router.push("/accueil");
+    router.push("/profil/sports");
   }
 
   if (!userId) {
@@ -106,7 +106,7 @@ export default function OuHabitesTu() {
           </button>
           <button
             type="button"
-            onClick={() => router.push("/accueil")}
+            onClick={() => router.push("/profil/sports")}
             disabled={saving}
             className="w-full rounded-2xl py-3 text-sm font-bold text-muted transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink disabled:opacity-60"
           >
