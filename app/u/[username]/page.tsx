@@ -4,9 +4,11 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Avatar from "../../../components/Avatar";
 import ConfirmDialog from "../../../components/ConfirmDialog";
+import FollowButton from "../../../components/FollowButton";
 import ProfileBanner from "../../../components/ProfileBanner";
 import ProfileStats from "../../../components/ProfileStats";
 import ReportDialog, { type ReportReason } from "../../../components/ReportDialog";
+import { followUser, unfollowUser, type FollowStatus } from "../../../lib/follows";
 import { useT } from "../../../lib/i18n";
 import { initialsOf } from "../../../lib/profile";
 import { createClient } from "../../../lib/supabase/client";
@@ -20,7 +22,6 @@ type Profile = {
   cover_url: string | null;
 };
 
-type FollowStatus = "pending" | "accepted" | null;
 type Confirm = "cancelRequest" | "unfollow" | "block" | null;
 
 // Le nom d'utilisateur n'est connu qu'au moment de la visite : useParams() a besoin
@@ -129,22 +130,16 @@ function ProfilPublic() {
     if (!profile) return;
     setBusy(true);
     setMessage(null);
-    const supabase = createClient();
-    // Sans status : la base choisit « pending » (compte privé) ou « accepted »
-    const { error } = await supabase.from("follows").insert({ follower_id: me, followed_id: profile.id });
-    if (error) {
-      console.error(`Abonnement impossible : ${error.message} (code ${error.code})`);
+    let status: FollowStatus;
+    try {
+      // Sans status : la base choisit « pending » (compte privé) ou « accepted », puis on relit la ligne
+      status = await followUser(createClient(), me, profile.id);
+    } catch (err) {
+      console.error("Abonnement impossible :", err);
       setBusy(false);
       setMessage({ kind: "error", text: t("publicProfile.followError") });
       return;
     }
-    const { data } = await supabase
-      .from("follows")
-      .select("status")
-      .eq("follower_id", me)
-      .eq("followed_id", profile.id)
-      .maybeSingle();
-    const status = (data?.status as FollowStatus) ?? "pending";
     setFollowStatus(status);
     await refreshCounts(profile.id);
     setBusy(false);
@@ -159,13 +154,10 @@ function ProfilPublic() {
     if (!profile) return;
     setBusy(true);
     setConfirmError("");
-    const { error } = await createClient()
-      .from("follows")
-      .delete()
-      .eq("follower_id", me)
-      .eq("followed_id", profile.id);
-    if (error) {
-      console.error(`Désabonnement impossible : ${error.message} (code ${error.code})`);
+    try {
+      await unfollowUser(createClient(), me, profile.id);
+    } catch (err) {
+      console.error("Désabonnement impossible :", err);
       setBusy(false);
       setConfirmError(t("publicProfile.actionError"));
       return;
@@ -285,6 +277,7 @@ function ProfilPublic() {
               <FollowButton
                 status={followStatus}
                 busy={busy}
+                name={name}
                 onFollow={follow}
                 onPending={() => {
                   setConfirmError("");
@@ -392,43 +385,6 @@ function ProfilPublic() {
         onClose={() => setReporting(false)}
       />
     </main>
-  );
-}
-
-// Bouton principal : « Suivre », « Demande envoyée » ou « Abonné »
-function FollowButton({
-  status,
-  busy,
-  onFollow,
-  onPending,
-  onAccepted,
-}: {
-  status: FollowStatus;
-  busy: boolean;
-  onFollow: () => void;
-  onPending: () => void;
-  onAccepted: () => void;
-}) {
-  const t = useT();
-  const base = "flex-1 rounded-2xl py-3 text-sm font-bold disabled:opacity-60";
-  if (status === "accepted") {
-    return (
-      <button type="button" onClick={onAccepted} disabled={busy} aria-busy={busy} className={`${base} border-2 border-accent-ink text-accent-ink`}>
-        {busy ? t("common.wait") : `✓ ${t("publicProfile.following")}`}
-      </button>
-    );
-  }
-  if (status === "pending") {
-    return (
-      <button type="button" onClick={onPending} disabled={busy} aria-busy={busy} className={`${base} border-2 border-line bg-surface text-foreground`}>
-        {busy ? t("common.wait") : t("publicProfile.requested")}
-      </button>
-    );
-  }
-  return (
-    <button type="button" onClick={onFollow} disabled={busy} aria-busy={busy} className={`${base} bg-accent text-on-accent`}>
-      {busy ? t("common.wait") : t("publicProfile.follow")}
-    </button>
   );
 }
 

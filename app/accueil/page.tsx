@@ -14,6 +14,7 @@ export default function Accueil() {
   const t = useT();
   const [name, setName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [pendingRequests, setPendingRequests] = useState(0);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -58,6 +59,18 @@ export default function Accueil() {
       const display = first ? [first, last].filter(Boolean).join(" ") : google;
       setName(display || data.user.email || "");
       setAvatarUrl(typeof profile?.avatar_url === "string" && profile.avatar_url ? profile.avatar_url : null);
+
+      // Demandes d'abonnement en attente : seulement le nombre, pour la pastille
+      const { count, error: pendingError } = await supabase
+        .from("follows")
+        .select("follower_id", { count: "exact", head: true })
+        .eq("followed_id", data.user.id)
+        .eq("status", "pending");
+      if (pendingError) {
+        console.error(`Lecture des demandes d'abonnement impossible : ${pendingError.message} (code ${pendingError.code})`);
+      } else {
+        setPendingRequests(count ?? 0);
+      }
       setReady(true);
     });
   }, [router]);
@@ -78,6 +91,41 @@ export default function Accueil() {
   return (
     <main className="bg-background text-foreground">
       <div className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-10 pt-16">
+        {/* Trouver des personnes, juste à gauche des paramètres, avec la pastille des demandes en attente */}
+        <Link
+          href="/personnes"
+          aria-label={
+            pendingRequests > 0
+              ? `${t("home.findPeople")} (${t("home.pendingBadge").replace("{n}", String(pendingRequests))})`
+              : t("home.findPeople")
+          }
+          title={t("home.findPeople")}
+          className="absolute right-16 top-4 flex h-11 w-11 items-center justify-center rounded-full text-muted transition-colors hover:text-accent-ink focus-visible:text-accent-ink focus-visible:outline-2 focus-visible:outline-accent-ink"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            className="h-6 w-6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="9" cy="8" r="3.5" />
+            <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+            <path d="M19 8v6M16 11h6" />
+          </svg>
+          {pendingRequests > 0 && (
+            <span
+              aria-hidden="true"
+              className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-background bg-accent px-1 text-[10px] font-black leading-none text-on-accent"
+            >
+              {pendingRequests > 9 ? "9+" : pendingRequests}
+            </span>
+          )}
+        </Link>
+
         {/* Roue dentée des paramètres, dans le coin en haut à droite */}
         <Link
           href="/parametres"

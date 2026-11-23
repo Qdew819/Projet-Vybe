@@ -3,32 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import Avatar from "../../../components/Avatar";
+import PersonRow, { RowButton } from "../../../components/PersonRow";
+import { loadPeople, personName, type Person } from "../../../lib/follows";
 import { useT } from "../../../lib/i18n";
-import { initialsOf } from "../../../lib/profile";
 import { createClient } from "../../../lib/supabase/client";
-
-type Person = { id: string; username: string | null; displayName: string | null; avatarUrl: string | null };
-type RowAction = { label: string; onClick: () => void; variant: "primary" | "secondary" };
-
-// follows et blocks ne sont pas liés à profiles : on lit les profils à part, avec la liste des identifiants
-async function loadPeople(supabase: SupabaseClient, ids: string[]): Promise<Person[]> {
-  if (ids.length === 0) return [];
-  const { data, error } = await supabase.from("profiles").select("id, username, display_name, avatar_url").in("id", ids);
-  if (error) throw error;
-  const byId = new Map((data ?? []).map((p) => [p.id as string, p]));
-  // On garde l'ordre des identifiants ; un profil illisible reste dans la liste (on peut quand même agir dessus)
-  return ids.map((id) => {
-    const p = byId.get(id);
-    return {
-      id,
-      username: (p?.username as string | undefined) ?? null,
-      displayName: (p?.display_name as string | undefined) ?? null,
-      avatarUrl: (p?.avatar_url as string | undefined) ?? null,
-    };
-  });
-}
 
 export default function Confidentialite() {
   const router = useRouter();
@@ -85,7 +63,12 @@ export default function Confidentialite() {
   }
 
   // Lance une action sur une ligne, puis la retire de la liste si elle réussit
-  async function run(key: string, action: () => PromiseLike<{ error: { message: string; code?: string } | null }>, onDone: () => void, success: string) {
+  async function run(
+    key: string,
+    action: () => PromiseLike<{ error: { message: string; code?: string } | null }>,
+    onDone: () => void,
+    success: string
+  ) {
     setBusyKey(key);
     setMessage(null);
     const { error } = await action();
@@ -154,19 +137,36 @@ export default function Confidentialite() {
             <p className="rounded-2xl border border-line bg-surface p-4 text-sm text-muted">{t("privacy.noRequests")}</p>
           ) : (
             <ul className="flex flex-col gap-2">
-              {requests.map((person) => (
-                <PersonRow
-                  key={person.id}
-                  person={person}
-                  handle={handleOf(person)}
-                  busyKey={busyKey}
-                  actions={[
-                    { label: t("privacy.accept"), onClick: () => accept(person), variant: "primary" },
-                    { label: t("privacy.refuse"), onClick: () => refuse(person), variant: "secondary" },
-                  ]}
-                  actionKeys={[`accept:${person.id}`, `refuse:${person.id}`]}
-                />
-              ))}
+              {requests.map((person) => {
+                const name = personName(person, handleOf(person));
+                const rowBusy = busyKey === `accept:${person.id}` || busyKey === `refuse:${person.id}`;
+                return (
+                  <PersonRow
+                    key={person.id}
+                    person={person}
+                    actions={
+                      <>
+                        <RowButton
+                          label={t("privacy.accept")}
+                          ariaLabel={t("people.acceptLabel").replace("{name}", name)}
+                          busy={busyKey === `accept:${person.id}`}
+                          disabled={rowBusy}
+                          variant="primary"
+                          onClick={() => accept(person)}
+                        />
+                        <RowButton
+                          label={t("privacy.refuse")}
+                          ariaLabel={t("people.refuseLabel").replace("{name}", name)}
+                          busy={busyKey === `refuse:${person.id}`}
+                          disabled={rowBusy}
+                          variant="secondary"
+                          onClick={() => refuse(person)}
+                        />
+                      </>
+                    }
+                  />
+                );
+              })}
             </ul>
           )}
         </section>
@@ -185,10 +185,15 @@ export default function Confidentialite() {
                 <PersonRow
                   key={person.id}
                   person={person}
-                  handle={handleOf(person)}
-                  busyKey={busyKey}
-                  actions={[{ label: t("publicProfile.unblock"), onClick: () => unblock(person), variant: "secondary" }]}
-                  actionKeys={[`unblock:${person.id}`]}
+                  actions={
+                    <RowButton
+                      label={t("publicProfile.unblock")}
+                      ariaLabel={t("people.unblockLabel").replace("{name}", personName(person, handleOf(person)))}
+                      busy={busyKey === `unblock:${person.id}`}
+                      variant="secondary"
+                      onClick={() => unblock(person)}
+                    />
+                  }
                 />
               ))}
             </ul>
@@ -196,64 +201,5 @@ export default function Confidentialite() {
         </section>
       </div>
     </main>
-  );
-}
-
-// Une personne : photo ronde (initiales sinon), nom, @, et ses boutons
-function PersonRow({
-  person,
-  handle,
-  busyKey,
-  actions,
-  actionKeys,
-}: {
-  person: Person;
-  handle: string;
-  busyKey: string | null;
-  actions: RowAction[];
-  actionKeys: string[];
-}) {
-  const t = useT();
-  const name = person.displayName || person.username || handle;
-  const anyBusy = actionKeys.includes(busyKey ?? "");
-  const identity = (
-    <>
-      <Avatar src={person.avatarUrl} initial={initialsOf(name)} alt="" size={48} />
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate text-sm font-bold">{name}</span>
-        <span className="truncate text-xs text-muted">{handle}</span>
-      </span>
-    </>
-  );
-  return (
-    <li className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-3">
-      {person.username ? (
-        <Link href={`/u/${person.username}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink">
-          {identity}
-        </Link>
-      ) : (
-        <span className="flex min-w-0 flex-1 items-center gap-3">{identity}</span>
-      )}
-      <div className="flex shrink-0 gap-2">
-        {actions.map((action, i) => {
-          const busy = busyKey === actionKeys[i];
-          return (
-            <button
-              key={action.label}
-              type="button"
-              onClick={action.onClick}
-              disabled={anyBusy}
-              aria-busy={busy}
-              aria-label={`${action.label} ${handle}`}
-              className={`rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-60 ${
-                action.variant === "primary" ? "bg-accent text-on-accent" : "border-2 border-line text-foreground hover:border-accent-ink"
-              }`}
-            >
-              {busy ? t("common.wait") : action.label}
-            </button>
-          );
-        })}
-      </div>
-    </li>
   );
 }
