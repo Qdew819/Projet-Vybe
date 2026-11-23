@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../lib/i18n";
+import { useMounted } from "../lib/useMounted";
 
 // Fenêtre de confirmation. Fenêtre modale native : le focus reste dedans, Échap la ferme,
 // et elle est annoncée comme une fenêtre de dialogue. Le focus part sur « Annuler » (choix sans risque).
@@ -28,6 +29,7 @@ export default function ConfirmDialog({
   onClose: () => void;
 }) {
   const t = useT();
+  const mounted = useMounted();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
@@ -40,10 +42,11 @@ export default function ConfirmDialog({
     } else if (!open && dialog.open) {
       dialog.close();
     }
-  }, [open]);
+  }, [open, mounted]);
 
   // Affichée dans le body : elle peut être utilisée même à l'intérieur d'un formulaire
-  if (typeof document === "undefined") return null;
+  // Rien au premier rendu (comme le serveur) : le portail apparaît juste après l'hydratation
+  if (!mounted) return null;
   return createPortal(
     <dialog
       ref={dialogRef}

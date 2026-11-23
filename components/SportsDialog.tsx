@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLanguage, useT } from "../lib/i18n";
+import { useMounted } from "../lib/useMounted";
 import { MAX_SPORTS, POPULAR_SPORT_IDS, getSport, searchSports, sportName, type Sport } from "../lib/sports";
 
 // Fenêtre « Tes sports » : barre de recherche, sports choisis (retirables) et suggestions.
@@ -19,6 +20,7 @@ export default function SportsDialog({
   onClose: () => void;
 }) {
   const t = useT();
+  const mounted = useMounted();
   const language = useLanguage();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -40,7 +42,7 @@ export default function SportsDialog({
     } else if (!open && dialog.open) {
       dialog.close();
     }
-  }, [open, value]);
+  }, [open, value, mounted]);
 
   function toggle(id: string) {
     setError("");
@@ -73,7 +75,8 @@ export default function SportsDialog({
   const chosen = selected.map(getSport).filter((sport) => sport !== undefined);
 
   // Affichée dans le body : elle ne doit pas se trouver dans le formulaire de la page
-  if (typeof document === "undefined") return null;
+  // Rien au premier rendu (comme le serveur) : le portail apparaît juste après l'hydratation
+  if (!mounted) return null;
   return createPortal(
     <dialog
       ref={dialogRef}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { useT, type MessageKey } from "../lib/i18n";
+import { useMounted } from "../lib/useMounted";
 
 // Raisons acceptées par la base (colonne reports.reason)
 export const REPORT_REASONS = ["spam", "harcelement", "faux_compte", "contenu_inapproprie", "mineur_en_danger", "autre"] as const;
@@ -35,6 +36,7 @@ export default function ReportDialog({
   onClose: () => void;
 }) {
   const t = useT();
+  const mounted = useMounted();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [details, setDetails] = useState("");
@@ -55,7 +57,7 @@ export default function ReportDialog({
     } else if (!open && dialog.open) {
       dialog.close();
     }
-  }, [open]);
+  }, [open, mounted]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -76,7 +78,8 @@ export default function ReportDialog({
     setSent(true);
   }
 
-  if (typeof document === "undefined") return null;
+  // Rien au premier rendu (comme le serveur) : le portail apparaît juste après l'hydratation
+  if (!mounted) return null;
   return createPortal(
     <dialog
       ref={dialogRef}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import UsernameField from "./UsernameField";
 import { useT } from "../lib/i18n";
+import { useMounted } from "../lib/useMounted";
 import { isValidUsername } from "../lib/profile";
 
 // Fenêtre « Nom d'utilisateur » avec ses boutons Annuler / Enregistrer (ou Valider).
@@ -24,6 +25,7 @@ export default function UsernameDialog({
   onClose: () => void;
 }) {
   const t = useT();
+  const mounted = useMounted();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [draft, setDraft] = useState(value);
   const [error, setError] = useState("");
@@ -40,7 +42,7 @@ export default function UsernameDialog({
     } else if (!open && dialog.open) {
       dialog.close();
     }
-  }, [open, value, initialError]);
+  }, [open, value, initialError, mounted]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -61,7 +63,8 @@ export default function UsernameDialog({
   }
 
   // Affichée dans le body : un formulaire ne peut pas se trouver dans le formulaire de la page
-  if (typeof document === "undefined") return null;
+  // Rien au premier rendu (comme le serveur) : le portail apparaît juste après l'hydratation
+  if (!mounted) return null;
   return createPortal(
     <dialog
       ref={dialogRef}
