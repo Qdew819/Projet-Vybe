@@ -11,6 +11,7 @@ import VideoCard from "../../components/home/VideoCard";
 import { SHOW_HOME_PREVIEW, previewEvent, previewPost, previewVideos } from "../../lib/home-preview";
 import { useT } from "../../lib/i18n";
 import { isLanguage, setLanguage } from "../../lib/language";
+import { sportImage } from "../../lib/sportImages";
 import { createClient } from "../../lib/supabase/client";
 import { isThemeChoice, setTheme } from "../../lib/theme";
 import { fetchCatalog, loadMySports, withDetails, type UserSport } from "../../lib/userSports";
@@ -237,7 +238,7 @@ export default function Accueil() {
           {sports.length > 0 ? (
             sports.map(({ sport }) => (
               <li key={sport.id}>
-                <Shortcut href="/evenements" label={sport.name}>
+                <Shortcut href="/evenements" label={sport.name} image={sportImage(sport.slug)}>
                   <span aria-hidden="true" className="text-[28px] leading-none">
                     {sport.emoji}
                   </span>
@@ -374,12 +375,32 @@ const circle =
 const shortcutBase =
   "group flex w-[72px] flex-col items-center gap-1.5 rounded-2xl text-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink";
 
-function Shortcut({ href, label, dashed = false, children }: { href: string; label: string; dashed?: boolean; children: ReactNode }) {
+// Raccourci rond : photo du sport (avec son propre anneau vert) si elle existe, sinon le contenu (émoji, icône)
+function Shortcut({
+  href,
+  label,
+  dashed = false,
+  image = null,
+  children,
+}: {
+  href: string;
+  label: string;
+  dashed?: boolean;
+  image?: string | null;
+  children: ReactNode;
+}) {
   return (
     <Link href={href} className={shortcutBase}>
-      <span className={`${circle} ${dashed ? "border-dashed border-accent-ink" : "border-accent"} group-hover:border-accent-ink`}>
-        {children}
-      </span>
+      {image ? (
+        <span className="relative block h-16 w-16 overflow-hidden rounded-full shadow-[0_0_12px_rgba(57,255,20,0.35)] transition-transform group-hover:scale-105">
+          {/* Décorative : le nom du sport est écrit dessous */}
+          <Image src={image} alt="" fill sizes="64px" className="object-cover" />
+        </span>
+      ) : (
+        <span className={`${circle} ${dashed ? "border-dashed border-accent-ink" : "border-accent"} group-hover:border-accent-ink`}>
+          {children}
+        </span>
+      )}
       <span className="w-full truncate text-[11px] font-semibold leading-tight">{label}</span>
     </Link>
   );
