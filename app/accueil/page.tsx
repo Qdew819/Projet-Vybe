@@ -36,9 +36,9 @@ function hideCityBanner() {
   }
 }
 
-// Bannière de l'en-tête (public/accueil-banniere.jpg, 1122 × 440) : le logo fait partie du décor (traînées et
+// Bannière de l'en-tête (public/accueil-banniere.jpg, 2000 × 420) : le logo fait partie du décor (traînées et
 // fissures vertes jusqu'aux bords, tirées de accueil-vybe.jpg), un peu à gauche du centre. Seul le bas s'efface.
-const BANNER_MASK = "linear-gradient(to bottom, black 50%, rgba(0,0,0,0.6) 75%, transparent 100%)";
+const BANNER_MASK = "linear-gradient(to bottom, black 62%, rgba(0,0,0,0.6) 82%, transparent 100%)";
 // Fond derrière le bas de la bannière : vert foncé qui se fond dans le fond de la page
 const HEADER_FADE = "linear-gradient(to bottom, #000 0%, #0b330d 55%, var(--background) 100%)";
 
@@ -170,15 +170,15 @@ export default function Accueil() {
           en blanc à droite. Le bas de la bannière se fond dans la page */}
       <header className="relative" style={{ background: HEADER_FADE }}>
         {logoFailed ? (
-          <p className="flex aspect-[1122/440] items-center justify-center select-none text-5xl font-black italic leading-none tracking-tight text-white">
+          <p className="flex aspect-[2000/420] items-center justify-center select-none text-3xl font-black italic leading-none tracking-tight text-white">
             VYBE
           </p>
         ) : (
           <Image
             src="/accueil-banniere.jpg"
             alt="Vybe"
-            width={1122}
-            height={440}
+            width={2000}
+            height={420}
             loading="eager"
             fetchPriority="high"
             sizes="(max-width: 500px) 100vw, 500px"
@@ -188,7 +188,7 @@ export default function Accueil() {
           />
         )}
 
-        <div className="absolute right-2 top-[28%] z-10 flex -translate-y-1/2 items-center drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]">
+        <div className="absolute right-2 top-[40%] z-10 flex -translate-y-1/2 items-center drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]">
           <HeaderIcon href="/personnes" label={t("home.search")}>
             <svg {...iconProps} viewBox="0 0 24 24" className="h-6 w-6" strokeWidth={2.2}>
               <circle cx="11" cy="11" r="7" />
@@ -212,8 +212,15 @@ export default function Accueil() {
         </div>
       </header>
 
-      {/* Raccourcis ronds (défilement horizontal), juste sous l'en-tête */}
-      <nav aria-label={t("home.shortcuts")} className="relative z-10 -mt-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Raccourcis ronds (défilement horizontal), remontés sur le bas de la bannière : le haut des cercles est à
+          environ 3 mm (17 px) sous le bas de la cloche, quelle que soit la largeur de l'écran.
+          Bannière H = largeur × 420/2000 ; bas de la cloche = 0,4 H + 12 px ; haut des cercles = H − marge + 4 px
+          → marge = 0,6 H − 25 px = largeur × 0,126 − 25 px */}
+      <nav
+        aria-label={t("home.shortcuts")}
+        className="relative z-10 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ marginTop: "calc(25px - min(100vw, 500px) * 0.126)" }}
+      >
         <ul className="flex w-max gap-3 px-4 pb-1 pt-1">
           <li>
             <PublishShortcut label={t("create.post")} />
