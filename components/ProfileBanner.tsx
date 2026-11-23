@@ -6,23 +6,27 @@ import Link from "next/link";
 import { useT } from "../lib/i18n";
 import { COVER_ACCEPT } from "../lib/cover";
 
+const GEAR_PATH =
+  "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z";
+
 // Bannière du profil (format 3:1) : photo de fond ou dégradé sombre avec une touche de vert néon.
-// En haut : « Retour » à gauche et l'icône de réglages à droite, sur fond semi-transparent.
-// En bas à droite : bouton rond appareil photo pour changer la photo de fond.
+// En haut : « Retour » à gauche et (si settingsHref) l'icône de réglages à droite, sur fond semi-transparent.
+// En bas à droite (si onPick) : bouton rond appareil photo pour changer la photo de fond.
+// Sans onPick ni settingsHref, la bannière est en lecture seule (profil d'une autre personne).
 export default function ProfileBanner({
   src,
-  busy,
+  busy = false,
   disabled,
   onPick,
   backHref,
   settingsHref,
 }: {
   src: string | null;
-  busy: boolean;
+  busy?: boolean;
   disabled?: boolean;
-  onPick: (file: File) => void;
+  onPick?: (file: File) => void;
   backHref: string;
-  settingsHref: string;
+  settingsHref?: string;
 }) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -58,45 +62,51 @@ export default function ProfileBanner({
           </svg>
           {t("common.back")}
         </Link>
-        <Link href={settingsHref} aria-label={t("cover.settings")} title={t("cover.settings")} className={`${overlayButton} h-10 w-10`}>
-          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-        </Link>
+        {settingsHref && (
+          <Link href={settingsHref} aria-label={t("cover.settings")} title={t("cover.settings")} className={`${overlayButton} h-10 w-10`}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path d={GEAR_PATH} />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </Link>
+        )}
       </div>
 
-      <input
-        ref={inputRef}
-        type="file"
-        accept={COVER_ACCEPT}
-        className="sr-only"
-        tabIndex={-1}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          // On vide le champ pour pouvoir choisir à nouveau la même photo
-          e.target.value = "";
-          if (file) onPick(file);
-        }}
-      />
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        disabled={busy || disabled}
-        aria-label={t("cover.change")}
-        aria-busy={busy}
-        title={t("cover.change")}
-        className={`${overlayButton} absolute bottom-3 right-3 h-10 w-10 disabled:opacity-60`}
-      >
-        {busy ? (
-          <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-        ) : (
-          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" />
-            <circle cx="12" cy="13" r="3.5" />
-          </svg>
-        )}
-      </button>
+      {onPick && (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            accept={COVER_ACCEPT}
+            className="sr-only"
+            tabIndex={-1}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              // On vide le champ pour pouvoir choisir à nouveau la même photo
+              e.target.value = "";
+              if (file) onPick(file);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={busy || disabled}
+            aria-label={t("cover.change")}
+            aria-busy={busy}
+            title={t("cover.change")}
+            className={`${overlayButton} absolute bottom-3 right-3 h-10 w-10 disabled:opacity-60`}
+          >
+            {busy ? (
+              <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            ) : (
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" />
+                <circle cx="12" cy="13" r="3.5" />
+              </svg>
+            )}
+          </button>
+        </>
+      )}
     </div>
   );
 }

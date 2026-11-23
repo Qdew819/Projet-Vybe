@@ -102,7 +102,8 @@ export default function Welcome() {
               {t("welcome.login")}
             </Link>
             <Link
-              href="/inscription"
+  
+  href="/inscription"
               className="rounded-2xl border border-[#39ff14] bg-black/40 py-4 text-center text-base font-bold text-[#39ff14] backdrop-blur-sm"
             >
               {t("welcome.signup")}

@@ -42,13 +42,14 @@ const icons: Record<"posts" | "followers" | "following", ReactNode> = {
   ),
 };
 
-// Statistiques du profil : trois colonnes séparées par une barre (icône verte et chiffre, intitulé dessous)
+// Statistiques du profil : colonnes séparées par une barre (icône verte et chiffre, intitulé dessous).
+// Sans « posts », seules les colonnes Abonnés et Abonnements sont affichées.
 export default function ProfileStats({
   posts,
   followers,
   following,
 }: {
-  posts: number;
+  posts?: number;
   followers: number;
   following: number;
 }) {
@@ -58,13 +59,13 @@ export default function ProfileStats({
   const format = new Intl.NumberFormat(language === "fr" ? "fr-CA" : "en-CA");
 
   const stats: { key: keyof typeof icons; value: number; label: MessageKey }[] = [
-    { key: "posts", value: posts, label: "stats.posts" },
+    ...(posts !== undefined ? [{ key: "posts" as const, value: posts, label: "stats.posts" as const }] : []),
     { key: "followers", value: followers, label: "stats.followers" },
     { key: "following", value: following, label: "stats.following" },
   ];
 
   return (
-    <dl className="grid grid-cols-3 divide-x divide-line">
+    <dl className={`grid divide-x divide-line ${stats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
       {stats.map((stat) => (
         <div key={stat.key} className="flex min-w-0 flex-col-reverse items-center px-2 text-center">
           <dt className="w-full truncate text-xs leading-tight text-muted">{t(stat.label)}</dt>

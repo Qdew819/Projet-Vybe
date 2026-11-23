@@ -6,6 +6,7 @@ import AccountTypePicker, { type AccountType } from "../../components/AccountTyp
 import AvatarPicker from "../../components/AvatarPicker";
 import ProfileBanner from "../../components/ProfileBanner";
 import ProfileStats from "../../components/ProfileStats";
+import SettingsLink from "../../components/SettingsLink";
 import SportsDialog from "../../components/SportsDialog";
 import SportsTabs from "../../components/SportsTabs";
 import UsernameDialog from "../../components/UsernameDialog";
@@ -28,6 +29,8 @@ export default function Parametres() {
   const [editingUsername, setEditingUsername] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [age, setAge] = useState<number | null>(null);
+  const [pendingRequests, setPendingRequests] = useState(0);
+  const [followCounts, setFollowCounts] = useState({ followers: 0, following: 0 });
   const [sports, setSports] = useState<string[]>([]);
   const [activeSport, setActiveSport] = useState<string | null>(null);
   const [editingSports, setEditingSports] = useState(false);
@@ -85,11 +88,29 @@ export default function Parametres() {
       setSavedAvatar(typeof profile.avatar_url === "string" && profile.avatar_url ? profile.avatar_url : null);
 
       // Sports, photo de fond et âge lus à part : si l'un manque, le reste de la page fonctionne quand même
-      const [sportsResult, coverResult, ageResult] = await Promise.all([
+      const [sportsResult, coverResult, ageResult, pendingResult, countsResult] = await Promise.all([
         supabase.from("profiles").select("sports").eq("id", uid).maybeSingle(),
         supabase.from("profiles").select("cover_url").eq("id", uid).maybeSingle(),
         supabase.rpc("get_age", { uid }),
+        // Demandes d'abonnement en attente : seulement le nombre (pastille)
+        supabase
+          .from("follows")
+          .select("follower_id", { count: "exact", head: true })
+          .eq("followed_id", uid)
+          .eq("status", "pending"),
+        supabase.rpc("get_follow_counts", { uid }),
       ]);
+      if (pendingResult.error) {
+        console.error(`Lecture des demandes d'abonnement impossible : ${pendingResult.error.message} (code ${pendingResult.error.code})`);
+      } else {
+        setPendingRequests(pendingResult.count ?? 0);
+      }
+      if (countsResult.error) {
+        console.error(`Lecture des abonnés impossible : ${countsResult.error.message} (code ${countsResult.error.code})`);
+      } else {
+        const row = Array.isArray(countsResult.data) ? countsResult.data[0] : countsResult.data;
+        setFollowCounts({ followers: Number(row?.followers ?? 0), following: Number(row?.following ?? 0) });
+      }
       if (sportsResult.error) {
         console.error(`Lecture des sports impossible : ${sportsResult.error.message} (code ${sportsResult.error.code})`);
       } else if (Array.isArray(sportsResult.data?.sports)) {
@@ -323,9 +344,9 @@ export default function Parametres() {
             {/* Bio enregistrée : elle change ici après « Enregistrer » */}
             {savedBio && <p className="mt-4 whitespace-pre-line break-words text-sm leading-snug">{savedBio}</p>}
 
-            {/* Pas encore de publications ni d'abonnements dans la base : 0 en attendant */}
+            {/* Pas encore de publications : 0 en attendant ; abonnés et abonnements acceptés via get_follow_counts */}
             <div className="mt-5">
-              <ProfileStats posts={0} followers={0} following={0} />
+              <ProfileStats posts={0} followers={followCounts.followers} following={followCounts.following} />
             </div>
 
             <div className="mt-5">
@@ -382,6 +403,34 @@ export default function Parametres() {
 
               <div className="mt-6">
                 <AccountTypePicker value={accountType} onChange={chooseType} />
+              </div>
+
+              {/* Pages à part : compte (mot de passe, courriel…) et confidentialité (demandes, blocages) */}
+              <div className="mt-6 flex flex-col gap-3">
+                <SettingsLink
+                  href="/parametres/compte"
+                  title={t("settings.accountLink")}
+                  hint={t("settings.accountLinkHint")}
+                  icon={
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z" />
+                      <path d="M9 12l2 2 4-4" />
+                    </svg>
+                  }
+                />
+                <SettingsLink
+                  href="/parametres/confidentialite"
+                  title={t("settings.privacyLink")}
+                  hint={t("settings.privacyLinkHint")}
+                  badge={pendingRequests}
+                  badgeLabel={t("settings.pendingBadge").replace("{n}", String(pendingRequests))}
+                  icon={
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="4" y="11" width="16" height="10" rx="2" />
+                      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                    </svg>
+                  }
+                />
               </div>
             </section>
           </div>
