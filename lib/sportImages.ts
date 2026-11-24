@@ -62,6 +62,10 @@ const SPORT_IMAGES: Record<string, string> = {
   lutte: "/sports/wrestling.jpg",
   climbing: "/sports/climbing.jpg",
   escalade: "/sports/climbing.jpg",
+  hiking: "/sports/hiking.jpg",
+  randonnee: "/sports/hiking.jpg",
+  "strength-training": "/sports/strength-training.jpg",
+  musculation: "/sports/strength-training.jpg",
 };
 
 function toKey(value: string): string {
