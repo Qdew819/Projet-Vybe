@@ -40,6 +40,8 @@ const SPORT_IMAGES: Record<string, string> = {
   patinage: "/sports/ice-skating.jpg",
   "figure-skating": "/sports/ice-skating.jpg",
   "patinage-artistique": "/sports/ice-skating.jpg",
+  ringette: "/sports/ringette.jpg",
+  ringuette: "/sports/ringette.jpg",
 };
 
 function toKey(value: string): string {
