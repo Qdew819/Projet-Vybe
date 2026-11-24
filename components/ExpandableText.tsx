@@ -10,6 +10,8 @@ const CLAMPS = { 1: "line-clamp-1", 2: "line-clamp-2", 3: "line-clamp-3", 4: "li
 const BACKDROPS = {
   surface: { solid: "bg-surface", fade: "from-transparent to-surface" },
   background: { solid: "bg-background", fade: "from-transparent to-background" },
+  // Sur une vidéo (fil plein écran) : pas de fond opaque, le bouton passe sous le texte, en gris clair
+  video: { solid: "", fade: "" },
 } as const;
 
 // Texte coupé à 3 lignes (ou `lines`), comme sur Instagram : « Montrer plus » n'apparaît que si le texte dépasse vraiment
@@ -21,12 +23,14 @@ export default function ExpandableText({
   prefix,
   className = "",
   backdrop = "surface",
+  onExpandedChange,
 }: {
   text: string;
   lines?: keyof typeof CLAMPS; // nombre de lignes affichées quand le texte est replié
   prefix?: ReactNode; // affiché avant le texte, sur la même ligne (ex. nom de l'auteur en gras)
   className?: string; // taille, interligne, marge…
   backdrop?: keyof typeof BACKDROPS;
+  onExpandedChange?: (expanded: boolean) => void;
 }) {
   const t = useT();
   const ref = useRef<HTMLParagraphElement>(null);
@@ -49,10 +53,14 @@ export default function ExpandableText({
   function toggle() {
     expandedRef.current = !expanded;
     setExpanded(!expanded);
+    onExpandedChange?.(!expanded);
   }
 
   const { solid, fade } = BACKDROPS[backdrop];
-  const button = "cursor-pointer bg-transparent font-semibold text-muted hover:text-foreground focus-visible:rounded focus-visible:outline-2 focus-visible:outline-accent-ink";
+  const onVideo = backdrop === "video";
+  const button = `cursor-pointer bg-transparent font-semibold focus-visible:rounded focus-visible:outline-2 ${
+    onVideo ? "text-white/70 hover:text-white focus-visible:outline-white" : "text-muted hover:text-foreground focus-visible:outline-accent-ink"
+  }`;
 
   return (
     <div className={`relative ${className}`}>
@@ -61,7 +69,12 @@ export default function ExpandableText({
         {prefix ? " " : null}
         {text}
       </p>
-      {overflows && !expanded && (
+      {overflows && !expanded && onVideo && (
+        <button type="button" aria-expanded={false} onClick={toggle} className={button}>
+          {t("text.showMore")}
+        </button>
+      )}
+      {overflows && !expanded && !onVideo && (
         // Sur la fin de la dernière ligne visible, avec un léger fondu pour ne pas couper un mot net
         <span className={`absolute bottom-0 right-0 flex ${solid}`}>
           <span aria-hidden="true" className={`absolute inset-y-0 right-full w-8 bg-linear-to-r ${fade}`} />
@@ -71,7 +84,7 @@ export default function ExpandableText({
         </span>
       )}
       {overflows && expanded && (
-        <div className="flex justify-end">
+        <div className={onVideo ? "flex" : "flex justify-end"}>
           <button type="button" aria-expanded onClick={toggle} className={button}>
             {t("text.showLess")}
           </button>

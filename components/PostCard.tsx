@@ -478,8 +478,9 @@ function Action({
   );
 }
 
-// Menu « ⋯ » : feuille qui monte du bas (Supprimer pour mes publications, sinon Signaler et Bloquer)
-function PostMenu({
+// Menu « ⋯ » : feuille qui monte du bas (Supprimer pour mes publications, sinon Signaler et Bloquer).
+// Exporté : aussi utilisé par le fil de vidéos plein écran (components/videos/ReelItem.tsx)
+export function PostMenu({
   open,
   mine,
   handle,

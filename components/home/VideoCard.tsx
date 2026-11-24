@@ -4,7 +4,7 @@ import { useT } from "../../lib/i18n";
 import { DurationBadge, PlayIcon } from "./MediaThumb";
 
 // Vignette verticale de la rangée « Vidéos populaires » : affiche, petit bouton de lecture, durée, début de la légende
-// sur 2 lignes (sans sauts de ligne, sans « Montrer plus ») et @pseudo de l'auteur en gris. Ouvre la publication.
+// sur 2 lignes (sans sauts de ligne, sans « Montrer plus ») et @pseudo de l'auteur en gris. Ouvre le fil de vidéos plein écran.
 export default function VideoCard({
   href,
   poster,

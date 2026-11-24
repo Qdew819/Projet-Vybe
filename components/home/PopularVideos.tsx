@@ -70,7 +70,7 @@ export default function PopularVideos({ sport, wrap }: { sport: string | null; w
         return (
           <li key={post.id}>
             <VideoCard
-              href={`/publication/${post.id}`}
+              href={`/videos?start=${encodeURIComponent(post.id)}`}
               poster={post.video_poster_url ?? null}
               caption={post.body ?? ""}
               author={author}
