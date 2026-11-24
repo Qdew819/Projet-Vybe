@@ -24,6 +24,10 @@ const SPORT_IMAGES: Record<string, string> = {
   softball: "/sports/softball.jpg",
   "balle-molle": "/sports/softball.jpg",
   pickleball: "/sports/pickleball.jpg",
+  swimming: "/sports/swimming.jpg",
+  natation: "/sports/swimming.jpg",
+  running: "/sports/running.jpg",
+  "course-a-pied": "/sports/running.jpg",
 };
 
 function toKey(value: string): string {
