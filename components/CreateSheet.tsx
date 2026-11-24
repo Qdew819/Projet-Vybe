@@ -6,9 +6,9 @@ import Link from "next/link";
 import { useT } from "../lib/i18n";
 import { useMounted } from "../lib/useMounted";
 
-// La page app/evenements/creer n'existe pas encore : le choix « Créer un événement » est affiché désactivé.
-// Passer à true quand la page sera créée.
-export const CREATE_EVENT_READY = false;
+// Option « Créer un événement » de la feuille : mène à app/evenements/creer.
+// Mettre false pour l’afficher désactivée (pastille « Bientôt »).
+export const CREATE_EVENT_READY = true;
 
 // Feuille « Créer » qui monte du bas de l'écran (bouton « + » de la barre du bas et raccourci « Publier »).
 // Fenêtre modale native : le focus reste dedans, Échap la ferme ; un clic sur le fond la ferme aussi.
