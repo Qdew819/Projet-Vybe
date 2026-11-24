@@ -68,7 +68,8 @@ export default function EventCard({
 
   // Inscription. L'organisateur ne peut pas quitter son propre événement : pastille non cliquable à la place
   let joinAction: ReactNode = null;
-  if (isOrganizer) joinAction = <span className={`${pill} border border-accent-ink text-accent-ink`}>{t("card.organizer")}</span>;
+  // Organisateur : pas de bouton ici, juste « (Organisateur) » à droite du titre
+  if (isOrganizer) joinAction = null;
   else if (event.cancelled) joinAction = <span className={muted}>{t("card.cancelled")}</span>;
   else if (ended) joinAction = <span className={muted}>{t("card.ended")}</span>;
   else if (status) {
@@ -146,12 +147,15 @@ export default function EventCard({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <h3 className="truncate text-base font-bold">
-          {/* Lien étiré : toute la carte est cliquable, le bouton reste au-dessus */}
-          <Link href={`/evenements/${event.id}`} className="outline-none after:absolute after:inset-0 after:rounded-2xl">
-            {event.title}
-          </Link>
-        </h3>
+        <div className="flex items-baseline gap-2">
+          <h3 className="min-w-0 flex-1 truncate text-base font-bold">
+            {/* Lien étiré : toute la carte est cliquable, les boutons restent au-dessus */}
+            <Link href={`/evenements/${event.id}`} className="outline-none after:absolute after:inset-0 after:rounded-2xl">
+              {event.title}
+            </Link>
+          </h3>
+          {isOrganizer && <span className="shrink-0 text-xs font-semibold text-accent-ink">({t("card.organizer")})</span>}
+        </div>
         <ul className="mt-1.5 flex flex-col gap-1 text-xs text-muted">
           <li className="flex items-center gap-1.5">
             <svg {...iconProps} className={metaIcon}>
