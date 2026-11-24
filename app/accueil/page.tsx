@@ -479,8 +479,7 @@ function Shortcut({
   );
 }
 
-// Icône de sport : filtre l'accueil. Active : anneau vert néon et lueur, nom en vert néon (accent-ink = #39ff14 en
-// mode sombre ; plus foncé en mode clair pour rester lisible sur fond blanc)
+// Icône de sport : filtre l'accueil. Active : anneau vert néon et lueur, nom en vert néon #39ff14 (dans les deux modes)
 function SportFilterShortcut({
   label,
   image,
@@ -504,7 +503,7 @@ function SportFilterShortcut({
       ) : (
         <span className={`${circle} border-accent group-hover:border-accent-ink ${ring}`}>{children}</span>
       )}
-      <span className={`w-full truncate text-[11px] leading-tight ${selected ? "font-black text-accent-ink" : "font-semibold"}`}>{label}</span>
+      <span className={`w-full truncate text-[11px] leading-tight ${selected ? "font-black text-[#39ff14]" : "font-semibold"}`}>{label}</span>
     </button>
   );
 }
