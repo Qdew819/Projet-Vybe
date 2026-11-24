@@ -5,10 +5,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell, { useOpenCreateSheet } from "../../components/AppShell";
-import EventMiniCard from "../../components/home/EventMiniCard";
+import HomeEvents from "../../components/home/HomeEvents";
 import PostCard from "../../components/home/PostCard";
 import VideoCard from "../../components/home/VideoCard";
-import { SHOW_HOME_PREVIEW, previewEvent, previewPost, previewVideos } from "../../lib/home-preview";
+import { SHOW_HOME_PREVIEW, previewPost, previewVideos } from "../../lib/home-preview";
 import { useT } from "../../lib/i18n";
 import { isLanguage, setLanguage } from "../../lib/language";
 import { sportImage } from "../../lib/sportImages";
@@ -56,6 +56,7 @@ export default function Accueil() {
   const router = useRouter();
   const t = useT();
   const [ready, setReady] = useState(false);
+  const [userId, setUserId] = useState("");
   const [pendingRequests, setPendingRequests] = useState(0);
   const [sports, setSports] = useState<UserSport[]>([]);
   const [showCityBanner, setShowCityBanner] = useState(false);
@@ -85,6 +86,7 @@ export default function Accueil() {
       // Profil pas encore rempli (aucune ligne ou pas de date de naissance) : on passe par la création du profil.
       // En cas d'erreur de lecture, on affiche quand même l'accueil plutôt que de bloquer la personne.
       const uid = data.user.id;
+      setUserId(uid);
       const { data: profile, error } = await supabase.from("profiles").select("birth_date").eq("id", uid).maybeSingle();
       if (error) {
         console.error(
@@ -139,14 +141,16 @@ export default function Accueil() {
     };
   }, []);
 
-  // Boutons d'exemple : rien ne se passe, on annonce « Bientôt ».
-  // Le texte alterne avec une espace insécable pour être annoncé de nouveau à chaque clic.
-  const soon = useCallback(() => {
-    const text = t("common.soon");
+  // Message bref au-dessus de la barre du bas (annoncé aux lecteurs d'écran).
+  // Le texte alterne avec une espace insécable pour être annoncé de nouveau à chaque fois.
+  const announce = useCallback((text: string) => {
     setToast((current) => (current === text ? `${text} ` : text));
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(""), 2500);
-  }, [t]);
+    toastTimer.current = setTimeout(() => setToast(""), 3000);
+  }, []);
+
+  // Boutons d'exemple (publication, vidéos) : rien ne se passe, on annonce « Bientôt »
+  const soon = useCallback(() => announce(t("common.soon")), [announce, t]);
 
   if (!ready) {
     return (
@@ -303,24 +307,23 @@ export default function Accueil() {
         </div>
       )}
 
+      {/* Vrais événements : 3 au maximum, les plus proches de la personne en premier */}
+      <Section
+        id="evenements-pres"
+        title={t("home.eventsNear")}
+        seeAllHref="/evenements"
+        icon={
+          <svg {...iconProps} viewBox="0 0 24 24" className="h-5 w-5" strokeWidth={2.2}>
+            <rect x="3" y="5" width="18" height="16" rx="2" />
+            <path d="M16 3v4M8 3v4M3 10h18" />
+          </svg>
+        }
+      >
+        <HomeEvents userId={userId} onMessage={announce} />
+      </Section>
+
       {SHOW_HOME_PREVIEW && (
         <>
-          <Section
-            id="evenements-pres"
-            title={t("home.eventsNear")}
-            seeAllHref="/evenements"
-            icon={
-              <svg {...iconProps} viewBox="0 0 24 24" className="h-5 w-5" strokeWidth={2.2}>
-                <rect x="3" y="5" width="18" height="16" rx="2" />
-                <path d="M16 3v4M8 3v4M3 10h18" />
-              </svg>
-            }
-          >
-            <div className="px-4">
-              <EventMiniCard {...previewEvent} onRegister={soon} inactive />
-            </div>
-          </Section>
-
           <div className="mt-6 px-4">
             <PostCard {...previewPost} onLike={soon} onComment={soon} onShare={soon} onPlay={soon} inactive />
           </div>

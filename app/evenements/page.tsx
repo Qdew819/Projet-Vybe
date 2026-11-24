@@ -8,8 +8,19 @@ import AppShell from "../../components/AppShell";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import EventCard, { EventCardSkeleton, type CardRole } from "../../components/EventCard";
 import EventManageSheet from "../../components/EventManageSheet";
-import { cityLabelWithoutCountry, normalizeSearch } from "../../lib/cities";
-import { EVENT_COLUMNS, deleteEvent, eventActionErrorKey, toParticipants, type EventRow, type ParticipantStatus } from "../../lib/events";
+import EventsEmptyState from "../../components/EventsEmptyState";
+import {
+  EVENT_COLUMNS,
+  deleteEvent,
+  fetchGoingCounts,
+  fetchMyPlace,
+  fetchMyStatuses,
+  fetchUpcomingEvents,
+  joinEvent,
+  rankByProximity,
+  type EventRow,
+  type ParticipantStatus,
+} from "../../lib/events";
 import { useT } from "../../lib/i18n";
 import { sportImage } from "../../lib/sportImages";
 import { createClient } from "../../lib/supabase/client";
@@ -91,54 +102,35 @@ export default function Evenements() {
 
       const now = Date.now();
       setLoadedAt(now);
-      const [catalogResult, ageResult, participationsResult, organizedResult, upcomingResult, locationResult] =
-        await Promise.all([
-          fetchCatalog(supabase).then(
-            (sports) => ({ data: sports, error: null }),
-            (err: unknown) => ({ data: null, error: err })
-          ),
-          supabase.rpc("get_age", { uid }),
-          supabase.from("event_participants").select("*").eq("user_id", uid),
-          supabase.from("events").select(EVENT_COLUMNS).eq("organizer_id", uid).order("starts_at", { ascending: false }).limit(MINE_LIMIT),
-          supabase
-            .from("events")
-            .select(EVENT_COLUMNS)
-            .gt("starts_at", new Date(now).toISOString())
-            .eq("cancelled", false)
-            .order("starts_at", { ascending: true })
-            .limit(UPCOMING_LIMIT),
-          supabase.from("user_locations").select("city_id").eq("user_id", uid).maybeSingle(),
-        ]);
+      const [catalogResult, ageResult, myStatuses, organizedResult, upcomingResult, place] = await Promise.all([
+        fetchCatalog(supabase).then(
+          (sports) => ({ data: sports, error: null }),
+          (err: unknown) => ({ data: null, error: err })
+        ),
+        supabase.rpc("get_age", { uid }),
+        fetchMyStatuses(supabase, uid),
+        supabase.from("events").select(EVENT_COLUMNS).eq("organizer_id", uid).order("starts_at", { ascending: false }).limit(MINE_LIMIT),
+        fetchUpcomingEvents(supabase, UPCOMING_LIMIT, now).then(
+          (rows) => ({ data: rows, error: null }),
+          (err: unknown) => ({ data: null, error: err })
+        ),
+        fetchMyPlace(supabase, uid),
+      ]);
 
-      if (organizedResult.error || upcomingResult.error) {
-        const error = organizedResult.error ?? upcomingResult.error;
-        console.error(`Lecture des événements impossible : ${error?.message} (code ${error?.code})`);
+      if (organizedResult.error || upcomingResult.error || !upcomingResult.data) {
+        console.error("Lecture des événements impossible :", organizedResult.error ?? upcomingResult.error);
         setLoad("error");
         return;
       }
       if (catalogResult.data) setCatalog(catalogResult.data);
       else console.error(catalogResult.error);
       if (!ageResult.error && typeof ageResult.data === "number") setAge(ageResult.data);
-
-      // Mes inscriptions (inscrit, en attente, liste d'attente)
-      let myParticipations: { userId: string; status: ParticipantStatus; eventId: string }[] = [];
-      if (participationsResult.error) {
-        console.error(
-          `Lecture de mes inscriptions impossible : ${participationsResult.error.message} (code ${participationsResult.error.code})`
-        );
-      } else {
-        const rows = (participationsResult.data ?? []) as Record<string, unknown>[];
-        myParticipations = rows.flatMap((row) => {
-          const [p] = toParticipants([row]);
-          return p && typeof row.event_id === "string" ? [{ ...p, eventId: row.event_id }] : [];
-        });
-      }
-      setStatuses(new Map(myParticipations.map((p) => [p.eventId, p.status])));
+      setStatuses(myStatuses);
 
       // Événements où je suis inscrit sans les organiser
       const organized = (organizedResult.data ?? []) as EventRow[];
       const organizedIds = new Set(organized.map((e) => e.id));
-      const joinedIds = myParticipations.map((p) => p.eventId).filter((id) => !organizedIds.has(id));
+      const joinedIds = [...myStatuses.keys()].filter((id) => !organizedIds.has(id));
       let joined: EventRow[] = [];
       if (joinedIds.length > 0) {
         const { data: joinedRows, error } = await supabase.from("events").select(EVENT_COLUMNS).in("id", joinedIds);
@@ -153,34 +145,12 @@ export default function Evenements() {
         ...all.filter(isPast).sort((a, b) => b.starts_at.localeCompare(a.starts_at)),
       ]);
 
-      // À venir : même ville que moi d'abord, puis même pays, puis le reste (par date dans chaque groupe)
-      let myCity = "";
-      let myCountry = "";
-      if (!locationResult.error && typeof locationResult.data?.city_id === "number") {
-        const { data: cityRow } = await supabase
-          .from("cities")
-          .select("label, country_code")
-          .eq("id", locationResult.data.city_id)
-          .maybeSingle();
-        if (cityRow) {
-          myCountry = String(cityRow.country_code ?? "");
-          myCity = normalizeSearch(cityLabelWithoutCountry(String(cityRow.label ?? ""), myCountry));
-        }
-      }
-      const rank = (e: EventRow) =>
-        myCity && normalizeSearch(e.city ?? "") === myCity ? 0 : myCountry && e.country === myCountry ? 1 : 2;
-      const upcomingRows = ((upcomingResult.data ?? []) as EventRow[])
-        .map((event, index) => ({ event, index, rank: rank(event) }))
-        .sort((a, b) => a.rank - b.rank || a.index - b.index)
-        .map((item) => item.event);
+      // À venir : même ville que moi d'abord, puis même pays, puis le reste
+      const upcomingRows = rankByProximity(upcomingResult.data, place);
       setUpcoming(upcomingRows);
 
       // Nombre d'inscrits de chaque événement affiché
-      const ids = [...new Set([...upcomingRows, ...all].map((e) => e.id))];
-      const results = await Promise.all(
-        ids.map((id) => supabase.rpc("event_going_count", { p_event: id }).then(({ data: n, error }) => [id, error ? 0 : Number(n ?? 0)] as const))
-      );
-      setCounts(new Map(results));
+      setCounts(await fetchGoingCounts(supabase, [...upcomingRows, ...all].map((e) => e.id)));
       setLoad("ready");
     });
     // t et showToast ne changent pas le chargement
@@ -210,23 +180,16 @@ export default function Evenements() {
     // Mise à jour optimiste
     setStatuses(new Map(statuses).set(event.id, expected));
     if (expected === "going") setCounts(new Map(counts).set(event.id, previousCount + 1));
-    const supabase = createClient();
-    const { error } = await supabase.rpc("join_event", { p_event: event.id });
-    if (error) {
-      console.error(`Inscription impossible : ${error.message} (code ${error.code})`);
+    const result = await joinEvent(createClient(), event.id, me);
+    if (!result.ok) {
       setStatuses(previousStatuses);
       setCounts((current) => new Map(current).set(event.id, previousCount));
-      showToast(t(eventActionErrorKey(error)));
+      showToast(t(result.errorKey));
     } else {
-      // Statut réel (la base peut mettre en liste d'attente) et nombre d'inscrits à jour
-      const [{ data: row }, { data: n }] = await Promise.all([
-        supabase.from("event_participants").select("*").eq("event_id", event.id).eq("user_id", me).maybeSingle(),
-        supabase.rpc("event_going_count", { p_event: event.id }),
-      ]);
-      const [actual] = toParticipants(row ? [row as Record<string, unknown>] : []);
-      if (actual) setStatuses((current) => new Map(current).set(event.id, actual.status));
-      if (typeof n === "number") setCounts((current) => new Map(current).set(event.id, n));
-      showToast(t(actual?.status === "pending" ? "event.requested" : actual?.status === "waitlist" ? "event.waitlisted" : "event.joined"));
+      const { status, count } = result;
+      if (status) setStatuses((current) => new Map(current).set(event.id, status));
+      if (count !== null) setCounts((current) => new Map(current).set(event.id, count));
+      showToast(t(result.messageKey));
       // L'événement apparaît aussi dans « Mes événements »
       if (!mine.some((e) => e.id === event.id)) setMine((current) => [event, ...current]);
     }
@@ -331,7 +294,7 @@ export default function Evenements() {
         )}
 
         {load === "ready" && filtered.length === 0 && (
-          <EmptyState
+          <EventsEmptyState
             title={tab === "mine" ? t("events.mineEmptyTitle") : t("events.emptyTitle")}
             text={tab === "mine" ? t("events.mineEmptyText") : t("events.emptyText")}
             cta={t("create.event")}
@@ -422,24 +385,5 @@ function FilterChip({
       ) : null}
       {label}
     </button>
-  );
-}
-
-function EmptyState({ title, text, cta }: { title: string; text: string; cta: string }) {
-  return (
-    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-line px-6 py-10 text-center">
-      <svg {...iconProps} className="h-10 w-10 text-accent-ink" strokeWidth={1.8}>
-        <rect x="3" y="5" width="18" height="16" rx="2" />
-        <path d="M16 3v4M8 3v4M3 10h18M12 13v5M9.5 15.5h5" />
-      </svg>
-      <p className="mt-1 font-bold">{title}</p>
-      <p className="text-sm text-muted">{text}</p>
-      <Link
-        href="/evenements/creer"
-        className="mt-3 rounded-full bg-accent px-5 py-3 text-sm font-bold text-on-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
-      >
-        {cta}
-      </Link>
-    </div>
   );
 }

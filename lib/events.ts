@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cityLabelWithoutCountry, normalizeSearch } from "./cities";
 import { COVER_BUCKET } from "./cover";
 import type { MessageKey } from "./i18n";
 
@@ -211,4 +212,103 @@ export async function deleteEvent(supabase: SupabaseClient, eventId: string): Pr
   if (result.error) return `${result.error.message} (code ${result.error.code})`;
   if (!result.data || result.data.length === 0) return "aucune ligne supprimée (règle d'accès DELETE manquante sur events ?)";
   return null;
+}
+
+// ---------- Listes d'événements (accueil et page Événements) ----------
+
+export type MyPlace = { city: string; country: string }; // ville normalisée (sans le pays) et code du pays
+
+// Ville du profil (user_locations → cities), pour mettre en premier les événements proches
+export async function fetchMyPlace(supabase: SupabaseClient, userId: string): Promise<MyPlace> {
+  const empty = { city: "", country: "" };
+  const { data: location, error } = await supabase.from("user_locations").select("city_id").eq("user_id", userId).maybeSingle();
+  if (error) {
+    console.error(`Lecture de la ville impossible : ${error.message} (code ${error.code})`);
+    return empty;
+  }
+  if (typeof location?.city_id !== "number") return empty;
+  const { data: cityRow, error: cityError } = await supabase
+    .from("cities")
+    .select("label, country_code")
+    .eq("id", location.city_id)
+    .maybeSingle();
+  if (cityError || !cityRow) {
+    if (cityError) console.error(`Lecture de la ville impossible : ${cityError.message} (code ${cityError.code})`);
+    return empty;
+  }
+  const country = String(cityRow.country_code ?? "");
+  return { city: normalizeSearch(cityLabelWithoutCountry(String(cityRow.label ?? ""), country)), country };
+}
+
+// Même ville d'abord, puis même pays, puis le reste ; l'ordre reçu (par date) est gardé dans chaque groupe
+export function rankByProximity(events: EventRow[], place: MyPlace): EventRow[] {
+  const rank = (e: EventRow) =>
+    place.city && normalizeSearch(e.city ?? "") === place.city ? 0 : place.country && e.country === place.country ? 1 : 2;
+  return events
+    .map((event, index) => ({ event, index, rank: rank(event) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((item) => item.event);
+}
+
+// Événements à venir, non annulés, par date (les règles d'accès de la base filtrent ce que je peux voir)
+export async function fetchUpcomingEvents(supabase: SupabaseClient, limit: number, now: number): Promise<EventRow[]> {
+  const { data, error } = await supabase
+    .from("events")
+    .select(EVENT_COLUMNS)
+    .gt("starts_at", new Date(now).toISOString())
+    .eq("cancelled", false)
+    .order("starts_at", { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(`Lecture des événements impossible : ${error.message} (code ${error.code})`);
+  return (data ?? []) as EventRow[];
+}
+
+// Nombre d'inscrits confirmés de chaque événement (0 si la lecture échoue)
+export async function fetchGoingCounts(supabase: SupabaseClient, ids: string[]): Promise<Map<string, number>> {
+  const results = await Promise.all(
+    [...new Set(ids)].map((id) =>
+      supabase.rpc("event_going_count", { p_event: id }).then(({ data, error }) => [id, error ? 0 : Number(data ?? 0)] as const)
+    )
+  );
+  return new Map(results);
+}
+
+// Mes inscriptions : événement → statut (inscrit, en attente, liste d'attente)
+export async function fetchMyStatuses(supabase: SupabaseClient, userId: string): Promise<Map<string, ParticipantStatus>> {
+  const { data, error } = await supabase.from("event_participants").select("*").eq("user_id", userId);
+  if (error) {
+    console.error(`Lecture de mes inscriptions impossible : ${error.message} (code ${error.code})`);
+    return new Map();
+  }
+  return new Map(
+    ((data ?? []) as Record<string, unknown>[]).flatMap((row) => {
+      const [p] = toParticipants([row]);
+      return p && typeof row.event_id === "string" ? [[row.event_id, p.status] as const] : [];
+    })
+  );
+}
+
+export type JoinResult =
+  | { ok: false; errorKey: MessageKey }
+  | { ok: true; status: ParticipantStatus | null; count: number | null; messageKey: MessageKey };
+
+// Inscription (join_event), puis relecture du statut réel (la base peut mettre en liste d'attente) et du nombre d'inscrits
+export async function joinEvent(supabase: SupabaseClient, eventId: string, userId: string): Promise<JoinResult> {
+  const { error } = await supabase.rpc("join_event", { p_event: eventId });
+  if (error) {
+    console.error(`Inscription impossible : ${error.message} (code ${error.code})`);
+    return { ok: false, errorKey: eventActionErrorKey(error) };
+  }
+  const [{ data: row }, { data: n }] = await Promise.all([
+    supabase.from("event_participants").select("*").eq("event_id", eventId).eq("user_id", userId).maybeSingle(),
+    supabase.rpc("event_going_count", { p_event: eventId }),
+  ]);
+  const [actual] = toParticipants(row ? [row as Record<string, unknown>] : []);
+  const status = actual?.status ?? null;
+  return {
+    ok: true,
+    status,
+    count: typeof n === "number" ? n : null,
+    messageKey: status === "pending" ? "event.requested" : status === "waitlist" ? "event.waitlisted" : "event.joined",
+  };
 }

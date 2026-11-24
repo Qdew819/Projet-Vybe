@@ -4,29 +4,15 @@ import type { PostAuthor } from "../components/home/PostCard";
 // =====================================================================
 //  DONNÉES D'EXEMPLE À REMPLACER PAR DE VRAIES DONNÉES
 // ---------------------------------------------------------------------
-//  Événement, publication et vidéos affichés sur l'accueil en attendant
-//  les vraies tables (événements, publications, vidéos). Les boutons de
-//  ces blocs sont inactifs et annoncent « Bientôt ».
-//  Pour brancher les vraies données : garder EventMiniCard, PostCard et
-//  VideoCard (components/home/) et leur passer les données lues dans Supabase.
-//  Mettre SHOW_HOME_PREVIEW à false masque les trois sections.
+//  Publication et vidéos affichées sur l'accueil en attendant les vraies
+//  tables (publications, vidéos). Les boutons de ces blocs sont inactifs et
+//  annoncent « Bientôt ». (Les événements sont déjà les vrais : HomeEvents.)
+//  Pour brancher les vraies données : garder PostCard et VideoCard
+//  (components/home/) et leur passer les données lues dans Supabase.
+//  Mettre SHOW_HOME_PREVIEW à false masque ces deux sections.
 // =====================================================================
 
 export const SHOW_HOME_PREVIEW = true;
-
-export const previewEvent: {
-  title: string;
-  place: string;
-  dateLabel: string;
-  participants: number;
-  media: Media;
-} = {
-  title: "Tournoi de hockey 3v3",
-  place: "Aréna du quartier",
-  dateLabel: "Sam. 23 nov. · 19 h 00",
-  participants: 12,
-  media: { kind: "image", src: "/accueil-vybe.jpg", alt: "Joueurs sur un terrain éclairé de vert", position: "50% 78%" },
-};
 
 export const previewPost: {
   author: PostAuthor;
