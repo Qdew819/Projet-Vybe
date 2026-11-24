@@ -19,6 +19,7 @@ import {
   eventActionErrorKey,
   eventSaveErrorKey,
   formatEventDate,
+  leaveEvent,
   toDateInput,
   toParticipants,
   toTimeInput,
@@ -237,11 +238,10 @@ function Evenement() {
   // ---------- Actions de la personne qui visite ----------
 
   async function join() {
-    if (!event || busy) return;
+    // L'organisateur n'a pas de bouton d'inscription
+    if (!event || busy || isOrganizer) return;
     const previous = participants;
-    // L'organisateur est inscrit directement, même en mode « sur approbation »
-    const expected: ParticipantStatus =
-      event.join_mode === "approval" && !isOrganizer ? "pending" : full ? "waitlist" : "going";
+    const expected: ParticipantStatus = event.join_mode === "approval" ? "pending" : full ? "waitlist" : "going";
     setBusy(true);
     // Mise à jour optimiste
     setParticipants([...participants.filter((p) => p.userId !== me), { userId: me, status: expected }]);
@@ -261,19 +261,24 @@ function Evenement() {
 
   async function leave() {
     if (!event) return;
+    // L'organisateur ne peut pas quitter son propre événement : leaveEvent ne l'envoie même pas à la base
     const wasStatus = myStatus;
     const previous = participants;
     setConfirmBusy(true);
     setBusy(true);
     setParticipants(participants.filter((p) => p.userId !== me));
     if (wasStatus === "going") setGoingCount((n) => Math.max(0, n - 1));
-    const { error } = await createClient().rpc("leave_event", { p_event: event.id });
+    const result = await leaveEvent(createClient(), event, me);
     setConfirmBusy(false);
-    if (error) {
-      console.error(`Départ impossible : ${error.message} (code ${error.code})`);
+    if (!result.ok) {
       setParticipants(previous);
       if (wasStatus === "going") setGoingCount((n) => n + 1);
-      setConfirmError(t(eventActionErrorKey(error)));
+      if (result.errorKey === "leave.organizerError") {
+        setConfirm(null);
+        showToast(t(result.errorKey));
+      } else {
+        setConfirmError(t(result.errorKey));
+      }
       setBusy(false);
       return;
     }
@@ -611,22 +616,24 @@ function Evenement() {
         </div>
       </div>
 
-      {/* Bouton principal, fixé en bas (l'organisateur peut aussi s'inscrire à son propre événement) */}
+      {/* Bouton principal, fixé en bas. L'organisateur n'a ni « S'inscrire » ni « Quitter » : un simple rappel */}
       <div className="fixed inset-x-0 bottom-0 z-30">
         <div className="mx-auto w-full max-w-[500px] border-t border-line bg-background/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-md">
           <MainAction
+            organizer={isOrganizer}
             status={myStatus}
             cancelled={event.cancelled}
             ended={ended}
             full={full}
             tooYoung={tooYoung}
             minAge={event.min_age}
-            approval={event.join_mode === "approval" && !isOrganizer}
+            approval={event.join_mode === "approval"}
             busy={busy}
             onJoin={join}
             onLeave={() => {
               setConfirmError("");
-              if (myStatus) setConfirm({ kind: "leave", status: myStatus });
+              if (isOrganizer) showToast(t("leave.organizerError"));
+              else if (myStatus) setConfirm({ kind: "leave", status: myStatus });
             }}
           />
         </div>
@@ -689,6 +696,7 @@ function Evenement() {
 // ---------- Morceaux ----------
 
 function MainAction({
+  organizer,
   status,
   cancelled,
   ended,
@@ -700,6 +708,7 @@ function MainAction({
   onJoin,
   onLeave,
 }: {
+  organizer: boolean;
   status: ParticipantStatus | null;
   cancelled: boolean;
   ended: boolean;
@@ -719,6 +728,16 @@ function MainAction({
     </button>
   );
 
+  if (organizer) {
+    return (
+      <p className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-accent-ink text-base font-bold text-accent-ink">
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z" />
+        </svg>
+        {t("event.youOrganize")}
+      </p>
+    );
+  }
   if (cancelled) return disabledButton(t("event.cancelled"));
   if (ended) return disabledButton(t("event.ended"));
 

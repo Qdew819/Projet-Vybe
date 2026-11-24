@@ -179,6 +179,19 @@ export function toParticipantStatus(raw: unknown): ParticipantStatus | null {
 
 export type Participant = { userId: string; status: ParticipantStatus };
 
+// Ma place dans un événement : organisateur (il ne peut pas s'en désinscrire, c'est voulu par la base),
+// sinon mon inscription (inscrit, en attente, liste d'attente) ou rien
+export type Participation = "organizer" | ParticipantStatus | null;
+
+export function participationOf(
+  event: Pick<EventRow, "organizer_id">,
+  userId: string,
+  status: ParticipantStatus | null | undefined
+): Participation {
+  if (userId && event.organizer_id === userId) return "organizer";
+  return status ?? null;
+}
+
 export function toParticipants(rows: Record<string, unknown>[] | null): Participant[] {
   return (rows ?? []).flatMap((row) => {
     const status = toParticipantStatus(row.status);
@@ -189,6 +202,7 @@ export function toParticipants(rows: Record<string, unknown>[] | null): Particip
 // Message d'erreur des fonctions join_event, leave_event, respond_to_join et remove_participant
 export function eventActionErrorKey(error: { message?: string; code?: string; details?: string | null }): MessageKey {
   const text = `${error.message ?? ""} ${error.details ?? ""}`;
+  if (text.includes("organisateur")) return "leave.organizerError";
   if (text.includes("age_insuffisant")) return "event.errorAge";
   if (text.includes("termine")) return "event.errorEnded";
   if (text.includes("annule")) return "event.errorCancelled";
@@ -315,13 +329,23 @@ export async function joinEvent(supabase: SupabaseClient, eventId: string, userI
 
 export type LeaveResult = { ok: false; errorKey: MessageKey } | { ok: true; count: number | null };
 
-// Désinscription (leave_event) : quitter l'événement, annuler sa demande ou quitter la liste d'attente
-export async function leaveEvent(supabase: SupabaseClient, eventId: string): Promise<LeaveResult> {
-  const { error } = await supabase.rpc("leave_event", { p_event: eventId });
+// Désinscription (leave_event) : quitter l'événement, annuler sa demande ou quitter la liste d'attente.
+// L'organisateur ne peut pas quitter son propre événement : on n'appelle jamais leave_event pour lui.
+export async function leaveEvent(
+  supabase: SupabaseClient,
+  event: Pick<EventRow, "id" | "organizer_id">,
+  userId: string
+): Promise<LeaveResult> {
+  if (participationOf(event, userId, null) === "organizer") return { ok: false, errorKey: "leave.organizerError" };
+  const { error } = await supabase.rpc("leave_event", { p_event: event.id });
   if (error) {
-    console.error(`Désinscription impossible : ${error.message} (code ${error.code})`);
-    return { ok: false, errorKey: eventActionErrorKey(error) };
+    const errorKey = eventActionErrorKey(error);
+    // Refus « organisateur » : cas prévu, annoncé à la personne (toast), pas une panne
+    if (errorKey !== "leave.organizerError") {
+      console.error(`Désinscription impossible : ${error.message} (code ${error.code})`);
+    }
+    return { ok: false, errorKey };
   }
-  const { data: n } = await supabase.rpc("event_going_count", { p_event: eventId });
+  const { data: n } = await supabase.rpc("event_going_count", { p_event: event.id });
   return { ok: true, count: typeof n === "number" ? n : null };
 }

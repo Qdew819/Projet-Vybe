@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { formatEventDate, type EventRow, type ParticipantStatus } from "../lib/events";
+import { formatEventDate, type EventRow, type Participation } from "../lib/events";
 import { useLanguage, useT } from "../lib/i18n";
 import { sportImage } from "../lib/sportImages";
 import type { CatalogSport } from "../lib/userSports";
@@ -21,13 +21,12 @@ const iconProps = {
 
 // Carte « Événements près de toi » : vignette à gauche, titre, lieu, date, participants, bouton en bas à droite.
 // Toute la carte mène à /evenements/[id] ; les boutons « S'inscrire » (onJoin) et « Gérer » (onManage) agissent sur place.
-// L'organisateur peut aussi s'inscrire à son propre événement : il voit alors les deux boutons.
+// Pour l'organisateur : pastille « Organisateur » (il ne peut ni s'inscrire ni se désinscrire) et bouton « Gérer ».
 export default function EventCard({
   event,
   sport,
   goingCount,
-  isOrganizer,
-  status,
+  participation,
   ended = false,
   tooYoung = false,
   busy = false,
@@ -38,8 +37,7 @@ export default function EventCard({
   event: EventRow;
   sport?: CatalogSport;
   goingCount: number;
-  isOrganizer: boolean;
-  status: ParticipantStatus | null; // mon inscription à cet événement
+  participation: Participation; // organisateur, mon inscription, ou rien (voir participationOf)
   ended?: boolean;
   tooYoung?: boolean;
   busy?: boolean;
@@ -65,10 +63,14 @@ export default function EventCard({
   const pill = "relative z-10 flex min-h-10 shrink-0 items-center rounded-full px-4 text-xs font-bold";
   const muted = `${pill} border border-line text-muted`;
 
-  // Inscription (tout le monde, organisateur compris)
+  const isOrganizer = participation === "organizer";
+  const status = isOrganizer ? null : participation;
+
+  // Inscription. L'organisateur ne peut pas quitter son propre événement : pastille non cliquable à la place
   let joinAction: ReactNode = null;
-  if (event.cancelled) joinAction = isOrganizer ? null : <span className={muted}>{t("card.cancelled")}</span>;
-  else if (ended) joinAction = isOrganizer ? null : <span className={muted}>{t("card.ended")}</span>;
+  if (isOrganizer) joinAction = <span className={`${pill} border border-accent-ink text-accent-ink`}>{t("card.organizer")}</span>;
+  else if (event.cancelled) joinAction = <span className={muted}>{t("card.cancelled")}</span>;
+  else if (ended) joinAction = <span className={muted}>{t("card.ended")}</span>;
   else if (status) {
     // Mon statut : un bouton qui propose de me désinscrire (ou d'annuler ma demande)
     const label = status === "going" ? t("card.going") : status === "pending" ? t("card.pending") : t("card.waitlist");
@@ -94,7 +96,7 @@ export default function EventCard({
         {event.min_age >= 18 ? t("eventForm.age18") : t("eventForm.age16")}
       </span>
     );
-  else if (full && (event.join_mode === "open" || isOrganizer))
+  else if (full && event.join_mode === "open")
     joinAction = (
       <span aria-disabled="true" className={muted}>
         {t("card.full")}
@@ -109,8 +111,7 @@ export default function EventCard({
         aria-label={t("card.joinLabel").replace("{title}", event.title)}
         className={`${pill} bg-accent text-on-accent transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink disabled:opacity-60`}
       >
-        {/* L'organisateur n'a pas à demander la permission à lui-même */}
-        {event.join_mode === "approval" && !isOrganizer ? t("card.request") : t("card.join")}
+        {event.join_mode === "approval" ? t("card.request") : t("card.join")}
       </button>
     );
 

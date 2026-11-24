@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import ConfirmDialog from "./ConfirmDialog";
-import { joinEvent, leaveEvent, type EventRow, type ParticipantStatus } from "../lib/events";
+import { joinEvent, leaveEvent, participationOf, type EventRow, type ParticipantStatus } from "../lib/events";
 import { useT, type MessageKey } from "../lib/i18n";
 import { createClient } from "../lib/supabase/client";
 
@@ -38,9 +38,9 @@ export function useEventParticipation({
   const [leaveError, setLeaveError] = useState("");
 
   async function join(event: EventRow) {
-    if (busyId) return;
-    // L'organisateur est inscrit directement, même en mode « sur approbation »
-    const expected: ParticipantStatus = event.join_mode === "approval" && event.organizer_id !== userId ? "pending" : "going";
+    // L'organisateur n'a pas de bouton d'inscription (sa carte affiche « Organisateur »)
+    if (busyId || participationOf(event, userId, null) === "organizer") return;
+    const expected: ParticipantStatus = event.join_mode === "approval" ? "pending" : "going";
     const previousStatus = statuses.get(event.id);
     const previousCount = counts.get(event.id) ?? 0;
     setBusyId(event.id);
@@ -69,6 +69,11 @@ export function useEventParticipation({
 
   // Clic sur « Inscrit ✓ », « En attente » ou « Liste d'attente » : on demande confirmation
   function askLeave(event: EventRow) {
+    // L'organisateur ne peut pas quitter son propre événement (refusé par la base) : on l'explique
+    if (participationOf(event, userId, null) === "organizer") {
+      onMessage(t("leave.organizerError"));
+      return;
+    }
     const status = statuses.get(event.id);
     if (!status) return;
     setLeaveError("");
@@ -79,10 +84,15 @@ export function useEventParticipation({
     if (!leaving) return;
     const { event, status } = leaving;
     setLeaveBusy(true);
-    const result = await leaveEvent(createClient(), event.id);
+    const result = await leaveEvent(createClient(), event, userId);
     setLeaveBusy(false);
     if (!result.ok) {
-      setLeaveError(t(result.errorKey));
+      if (result.errorKey === "leave.organizerError") {
+        setLeaving(null);
+        onMessage(t(result.errorKey));
+      } else {
+        setLeaveError(t(result.errorKey));
+      }
       return;
     }
     setStatuses((current) => {

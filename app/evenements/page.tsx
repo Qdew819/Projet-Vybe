@@ -17,6 +17,7 @@ import {
   fetchMyPlace,
   fetchMyStatuses,
   fetchUpcomingEvents,
+  participationOf,
   rankByProximity,
   type EventRow,
 } from "../../lib/events";
@@ -282,8 +283,7 @@ export default function Evenements() {
               event={event}
               sport={sportsBySlug.get(event.sport)}
               goingCount={counts.get(event.id) ?? 0}
-              isOrganizer={event.organizer_id === me}
-              status={statuses.get(event.id) ?? null}
+              participation={participationOf(event, me, statuses.get(event.id))}
               ended={new Date(event.starts_at).getTime() <= loadedAt}
               tooYoung={age !== null && age < event.min_age}
               busy={busyId === event.id}

@@ -12,6 +12,7 @@ import {
   fetchMyPlace,
   fetchMyStatuses,
   fetchUpcomingEvents,
+  participationOf,
   rankByProximity,
   type EventRow,
 } from "../../lib/events";
@@ -130,8 +131,7 @@ export default function HomeEvents({ userId, onMessage }: { userId: string; onMe
             event={event}
             sport={sportsBySlug.get(event.sport)}
             goingCount={counts.get(event.id) ?? 0}
-            isOrganizer={event.organizer_id === userId}
-            status={statuses.get(event.id) ?? null}
+            participation={participationOf(event, userId, statuses.get(event.id))}
             tooYoung={age !== null && age < event.min_age}
             busy={busyId === event.id}
             onJoin={() => join(event)}
