@@ -41,7 +41,8 @@ function hideCityBanner() {
 // fissures vertes jusqu'aux bords, tirées de accueil-vybe.jpg), un peu à gauche du centre. Seul le bas s'efface.
 const BANNER_MASK = "linear-gradient(to bottom, black 62%, rgba(0,0,0,0.6) 82%, transparent 100%)";
 // Fond derrière le bas de la bannière : vert foncé qui se fond dans le fond de la page
-const HEADER_FADE = "linear-gradient(to bottom, #000 0%, #0b330d 55%, var(--background) 100%)";
+// (noir puis vert foncé en mode sombre, blanc puis vert pâle en mode clair : voir globals.css)
+const HEADER_FADE = "linear-gradient(to bottom, var(--header-start) 0%, var(--header-mid) 55%, var(--background) 100%)";
 
 const iconProps = {
   "aria-hidden": true,
@@ -171,7 +172,7 @@ export default function Accueil() {
           en blanc à droite. Le bas de la bannière se fond dans la page */}
       <header className="relative" style={{ background: HEADER_FADE }}>
         {logoFailed ? (
-          <p className="flex aspect-[2000/420] items-center justify-center select-none text-3xl font-black italic leading-none tracking-tight text-white">
+          <p className="flex aspect-[2000/420] items-center justify-center select-none text-3xl font-black italic leading-none tracking-tight text-white light:text-foreground">
             VYBE
           </p>
         ) : (
@@ -184,12 +185,13 @@ export default function Accueil() {
             fetchPriority="high"
             sizes="(max-width: 500px) 100vw, 500px"
             onError={() => setLogoFailed(true)}
-            className="block h-auto w-full"
+            // En mode clair, le fond noir de la photo devient blanc (couleurs gardées à peu près)
+            className="block h-auto w-full light:[filter:invert(1)_hue-rotate(180deg)]"
             style={{ maskImage: BANNER_MASK, WebkitMaskImage: BANNER_MASK }}
           />
         )}
 
-        <div className="absolute right-2 top-[40%] z-10 flex -translate-y-1/2 items-center drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]">
+        <div className="absolute right-2 top-[40%] z-10 flex -translate-y-1/2 items-center drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)] light:drop-shadow-none">
           <HeaderIcon href="/personnes" label={t("home.search")}>
             <svg {...iconProps} viewBox="0 0 24 24" className="h-6 w-6" strokeWidth={2.2}>
               <circle cx="11" cy="11" r="7" />
@@ -204,7 +206,7 @@ export default function Accueil() {
             {pendingRequests > 0 && (
               <span
                 aria-hidden="true"
-                className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-black bg-accent px-1 text-[10px] font-black leading-none text-on-accent"
+                className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-background bg-accent px-1 text-[10px] font-black leading-none text-on-accent"
               >
                 {pendingRequests > 9 ? "9+" : pendingRequests}
               </span>
@@ -363,7 +365,7 @@ function HeaderIcon({ href, label, children }: { href: string; label: string; ch
       href={href}
       aria-label={label}
       title={label}
-      className="relative flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors hover:text-accent focus-visible:outline-2 focus-visible:outline-accent"
+      className="relative flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors hover:text-accent light:text-foreground light:hover:text-accent-ink focus-visible:outline-2 focus-visible:outline-accent"
     >
       {children}
     </Link>

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Variante « light: » pour les rares styles propres au mode clair */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
 /*
   Couleurs de Vybe. Le thème est choisi par l'attribut data-theme sur <html>
   ("dark" ou "light"). Sans attribut, c'est le mode sombre.
@@ -23,6 +26,9 @@
   --cover-start: #050805;
   --cover-end: #12261a;
   --cover-glow: rgba(57, 255, 20, 0.28);
+  /* Fond derrière la bannière de l'accueil */
+  --header-start: #000000;
+  --header-mid: #0b330d;
 }
 
 :root[data-theme="light"] {
@@ -41,6 +47,8 @@
   --cover-start: #1a2a1d;
   --cover-end: #2f4a35;
   --cover-glow: rgba(57, 255, 20, 0.35);
+  --header-start: #ffffff;
+  --header-mid: #e2f5dc;
 }
 
 @theme inline {
