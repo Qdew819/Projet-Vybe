@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useT } from "../lib/i18n";
 import { createClient } from "../lib/supabase/client";
+import { RETURN_COOKIE, RETURN_PARAM, safeReturnPath } from "../lib/share";
 
 // Mettre false pour cacher le bouton Apple tant qu'on n'a pas le compte développeur Apple
 const showApple = true;
@@ -13,6 +14,12 @@ export default function SocialButtons() {
 
   async function signInWithGoogle() {
     setMessage("");
+    // Arrivée depuis un lien partagé (?retour=/e/…) : le chemin est gardé 10 minutes dans un cookie, relu par
+    // /auth/callback. (L'adresse de retour de Google reste la même : elle doit correspondre à la liste de Supabase.)
+    const retour = safeReturnPath(new URLSearchParams(window.location.search).get(RETURN_PARAM));
+    document.cookie = retour
+      ? `${RETURN_COOKIE}=${encodeURIComponent(retour)}; Path=/; Max-Age=600; SameSite=Lax`
+      : `${RETURN_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",

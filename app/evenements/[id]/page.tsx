@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import Avatar from "../../../components/Avatar";
 import BirthDateNotice from "../../../components/BirthDateNotice";
 import ConfirmDialog from "../../../components/ConfirmDialog";
+import ShareButton from "../../../components/ShareButton";
 import { leaveTexts } from "../../../components/useEventParticipation";
 import {
   EVENT_CAPACITY_MAX,
@@ -31,6 +32,7 @@ import {
   type ParticipantStatus,
 } from "../../../lib/events";
 import { loadPeople, type Person } from "../../../lib/follows";
+import { eventSharePath } from "../../../lib/share";
 import { useLanguage, useT, type MessageKey } from "../../../lib/i18n";
 import { initialsOf } from "../../../lib/profile";
 import { sportImage } from "../../../lib/sportImages";
@@ -425,6 +427,22 @@ function Evenement() {
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
+          {/* « Envoyer » : lien court /e/<id>. Pour un événement « abonnés seulement », le lien n'affiche qu'un aperçu générique */}
+          <div className="absolute right-3 top-3">
+            <ShareButton
+              url={eventSharePath(event.id)}
+              title={event.title}
+              text={
+                event.city
+                  ? t("share.eventText")
+                      .replace("{title}", event.title)
+                      .replace("{date}", formatEventDate(event.starts_at, language))
+                      .replace("{city}", event.city)
+                  : t("share.eventTextNoCity").replace("{title}", event.title).replace("{date}", formatEventDate(event.starts_at, language))
+              }
+              className="flex min-h-11 items-center gap-2 rounded-full bg-black/55 px-4 text-sm font-bold text-white backdrop-blur-sm transition-colors hover:bg-black/75 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            />
+          </div>
         </div>
 
         <div className="px-4">

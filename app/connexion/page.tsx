@@ -7,6 +7,7 @@ import LanguageToggle from "../../components/LanguageToggle";
 import SocialButtons from "../../components/SocialButtons";
 import { useT } from "../../lib/i18n";
 import { createClient } from "../../lib/supabase/client";
+import { RETURN_PARAM, safeReturnPath } from "../../lib/share";
 
 export default function Connexion() {
   const router = useRouter();
@@ -36,7 +37,9 @@ export default function Connexion() {
       return;
     }
 
-    router.push("/accueil");
+    // Arrivée depuis un lien partagé (?retour=/e/…) : on y retourne ; seulement des chemins internes
+    const retour = safeReturnPath(new URLSearchParams(window.location.search).get(RETURN_PARAM));
+    router.push(retour ?? "/accueil");
   }
 
   const fieldClass =

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "../../components/AppShell";
@@ -8,9 +8,11 @@ import Avatar from "../../components/Avatar";
 import ProfileBanner from "../../components/ProfileBanner";
 import ProfileStats from "../../components/ProfileStats";
 import ProfileTabs from "../../components/ProfileTabs";
+import { useShare } from "../../components/ShareButton";
 import SportsTabs from "../../components/SportsTabs";
 import { displayCityLabel } from "../../lib/cities";
 import { useT } from "../../lib/i18n";
+import { profileSharePath } from "../../lib/share";
 import { createClient } from "../../lib/supabase/client";
 import { fetchCatalog, loadMySports, withDetails, type UserSport } from "../../lib/userSports";
 
@@ -34,8 +36,8 @@ export default function Profil() {
   const [counts, setCounts] = useState({ followers: 0, following: 0 });
   const [sports, setSports] = useState<UserSport[]>([]);
   const [activeSport, setActiveSport] = useState<number | null>(null);
-  const [shareMessage, setShareMessage] = useState("");
-  const shareTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Partage du profil (feuille de partage du téléphone ou « Envoyer à… »)
+  const { share, ui: shareUi } = useShare();
 
   useEffect(() => {
     const supabase = createClient();
@@ -114,28 +116,17 @@ export default function Profil() {
     });
   }, [router]);
 
-  useEffect(() => {
-    return () => {
-      if (shareTimer.current) clearTimeout(shareTimer.current);
-    };
-  }, []);
 
   // Copie le lien de mon profil public ; le message est annoncé (aria-live) puis disparaît
-  async function shareProfile() {
+  // Partage du profil : feuille de partage du téléphone, sinon « Envoyer à… » (lien /u/<pseudo>)
+  function shareProfile() {
     if (!profile?.username) return;
-    const url = `${window.location.origin}/u/${encodeURIComponent(profile.username)}`;
-    let text: string;
-    try {
-      await navigator.clipboard.writeText(url);
-      text = t("myProfile.linkCopied");
-    } catch (err) {
-      console.error("Copie du lien impossible :", err);
-      text = t("myProfile.copyError");
-    }
-    // Espace insécable en alternance : le message est annoncé de nouveau à chaque clic
-    setShareMessage((current) => (current === text ? `${text} ` : text));
-    if (shareTimer.current) clearTimeout(shareTimer.current);
-    shareTimer.current = setTimeout(() => setShareMessage(""), 3000);
+    const display = profile.displayName || profile.username;
+    void share({
+      url: profileSharePath(profile.username),
+      title: `${display} (@${profile.username}) · Vybe`,
+      text: t("share.profileText").replace("{name}", display),
+    });
   }
 
   if (!ready) {
@@ -173,7 +164,7 @@ export default function Profil() {
         settingsHref="/parametres"
         settingsLabel={t("home.settings")}
         onShare={profile.username ? shareProfile : undefined}
-        shareLabel={t("myProfile.share")}
+        shareLabel={t("share.profile")}
       />
 
       <div className="px-6">
@@ -201,9 +192,6 @@ export default function Profil() {
           </Link>
         </div>
 
-        <p aria-live="polite" className={`text-sm font-semibold ${shareMessage ? "mt-3 text-accent-ink" : "sr-only"}`}>
-          {shareMessage}
-        </p>
 
         {profile.bio && <p className="mt-4 whitespace-pre-line break-words text-sm leading-snug">{profile.bio}</p>}
 
@@ -222,6 +210,7 @@ export default function Profil() {
       <div className="mt-6">
         <ProfileTabs />
       </div>
+      {shareUi}
     </AppShell>
   );
 }

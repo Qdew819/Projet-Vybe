@@ -6,6 +6,8 @@ import Link from "next/link";
 import { formatEventDate, type EventRow, type Participation } from "../lib/events";
 import { useLanguage, useT } from "../lib/i18n";
 import { sportImage } from "../lib/sportImages";
+import { eventSharePath } from "../lib/share";
+import ShareButton from "./ShareButton";
 import type { CatalogSport } from "../lib/userSports";
 
 const metaIcon = "h-3.5 w-3.5 shrink-0 text-accent-ink";
@@ -155,6 +157,20 @@ export default function EventCard({
             </Link>
           </h3>
           {isOrganizer && <span className="shrink-0 text-xs font-semibold text-accent-ink">({t("card.organizer")})</span>}
+          {/* Envoi discret : au-dessus du lien étiré (z-10), il n'ouvre pas la carte */}
+          <span className="relative z-10 -my-2 -mr-2 shrink-0 self-start">
+            <ShareButton
+              variant="icon"
+              url={eventSharePath(event.id)}
+              title={event.title}
+              text={
+                event.city
+                  ? t("share.eventText").replace("{title}", event.title).replace("{date}", formatEventDate(event.starts_at, language)).replace("{city}", event.city)
+                  : t("share.eventTextNoCity").replace("{title}", event.title).replace("{date}", formatEventDate(event.starts_at, language))
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-full text-muted transition-colors hover:text-accent-ink focus-visible:outline-2 focus-visible:outline-accent-ink"
+            />
+          </span>
         </div>
         <ul className="mt-1.5 flex flex-col gap-1 text-xs text-muted">
           <li className="flex items-center gap-1.5">

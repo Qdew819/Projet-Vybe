@@ -7,11 +7,13 @@ import Link from "next/link";
 import Avatar from "./Avatar";
 import ConfirmDialog from "./ConfirmDialog";
 import ReportDialog, { type ReportReason } from "./ReportDialog";
+import ShareButton from "./ShareButton";
 import { formatEventDate, type EventRow } from "../lib/events";
 import type { Person } from "../lib/follows";
 import { useLanguage, useT } from "../lib/i18n";
 import { deletePost, setLike, type PostRow, type PostStats } from "../lib/posts";
 import { initialsOf } from "../lib/profile";
+import { postSharePath } from "../lib/share";
 import { sportImage } from "../lib/sportImages";
 import { createClient } from "../lib/supabase/client";
 import { relativeTime } from "../lib/time";
@@ -86,16 +88,6 @@ export default function PostCard({
       onMessage(t("post.likeError"));
     }
     setLikeBusy(false);
-  }
-
-  async function share() {
-    const url = `${window.location.origin}/publication/${post.id}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      onMessage(t("post.linkCopied"));
-    } catch {
-      onMessage(t("post.linkError"));
-    }
   }
 
   async function confirmAction() {
@@ -211,9 +203,20 @@ export default function PostCard({
             <span className="tabular-nums">{format.format(stats.comments)}</span>
           </span>
         )}
-        <Action label={t("post.share")} onClick={share}>
-          <path d="M14 5l7 7-7 7M21 12H10a7 7 0 0 0-7 7" />
-        </Action>
+        {/* « Envoyer » : feuille de partage du téléphone (lien court /p/<id>) */}
+        <ShareButton
+          variant="icon"
+          url={postSharePath(post.id)}
+          title={t("post.shareTitle").replace("{name}", name)}
+          text={
+            post.body?.trim()
+              ? t("share.postText")
+                  .replace("{name}", name)
+                  .replace("{excerpt}", post.body.trim().length > 100 ? `${post.body.trim().slice(0, 99).trimEnd()}…` : post.body.trim())
+              : t("share.postTextNoBody").replace("{name}", name)
+          }
+          className="flex min-h-11 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold text-muted transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent-ink"
+        />
       </div>
 
       <PostMenu

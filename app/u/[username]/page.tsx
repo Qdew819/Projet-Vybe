@@ -8,11 +8,13 @@ import FollowButton from "../../../components/FollowButton";
 import ProfileBanner from "../../../components/ProfileBanner";
 import ProfileStats from "../../../components/ProfileStats";
 import ReportDialog, { type ReportReason } from "../../../components/ReportDialog";
+import ShareButton from "../../../components/ShareButton";
 import SportsTabs from "../../../components/SportsTabs";
 import { displayCityLabel } from "../../../lib/cities";
 import { followUser, unfollowUser, type FollowStatus } from "../../../lib/follows";
 import { useT } from "../../../lib/i18n";
 import { initialsOf } from "../../../lib/profile";
+import { loginPathWithReturn, profileSharePath } from "../../../lib/share";
 import { createClient } from "../../../lib/supabase/client";
 import { fetchUserSports, type UserSport } from "../../../lib/userSports";
 
@@ -93,7 +95,8 @@ function ProfilPublic() {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) {
-        router.replace("/connexion");
+        // Pas connecté : connexion, puis retour sur ce profil
+        router.replace(loginPathWithReturn(profileSharePath(username)));
         return;
       }
       const myId = data.user.id;
@@ -313,6 +316,12 @@ function ProfilPublic() {
                 }}
               />
             )}
+            <ShareButton
+              url={profileSharePath(profile.username)}
+              title={`${name} (${handle}) · Vybe`}
+              text={t("share.profileText").replace("{name}", name)}
+              label={t("share.profile")}
+            />
             <MoreMenu
               open={menuOpen}
               onOpenChange={setMenuOpen}
