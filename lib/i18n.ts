@@ -353,6 +353,10 @@ const fr = {
   "location.homeCard": "Ajoute ta ville pour voir les événements près de toi",
   "settings.locationLink": "Localisation",
   "settings.locationLinkHint": "Ta ville et qui peut la voir",
+  "settings.lighting": "Éclairage",
+  "settings.lightingHint": "Affichage sombre ou clair",
+  "settings.lightingAutoHint": "Actuellement : comme ton appareil",
+  "settings.lightingError": "Impossible d’enregistrer l’éclairage pour l’instant. Réessaie dans un instant.",
 
   "settings.notificationsLink": "Notifications et messages",
   "settings.notificationsLinkHint": "Ce qui te notifie, qui peut t’écrire",
@@ -799,6 +803,10 @@ const en: Messages = {
   "location.homeCard": "Add your city to see events near you",
   "settings.locationLink": "Location",
   "settings.locationLinkHint": "Your city and who can see it",
+  "settings.lighting": "Lighting",
+  "settings.lightingHint": "Dark or light display",
+  "settings.lightingAutoHint": "Currently: matches your device",
+  "settings.lightingError": "Couldn’t save the lighting right now. Try again in a moment.",
 
   "settings.notificationsLink": "Notifications and messages",
   "settings.notificationsLinkHint": "What notifies you, who can message you",

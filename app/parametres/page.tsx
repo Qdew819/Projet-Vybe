@@ -6,6 +6,7 @@ import AccountTypePicker, { type AccountType } from "../../components/AccountTyp
 import AvatarPicker from "../../components/AvatarPicker";
 import ProfileBanner from "../../components/ProfileBanner";
 import ProfileStats from "../../components/ProfileStats";
+import LightingToggle from "../../components/LightingToggle";
 import SettingsLink from "../../components/SettingsLink";
 import SportEditDialog from "../../components/SportEditDialog";
 import SportsTabs from "../../components/SportsTabs";
@@ -514,6 +515,7 @@ export default function Parametres() {
                     </svg>
                   }
                 />
+                <LightingToggle />
               </div>
             </section>
           </div>
