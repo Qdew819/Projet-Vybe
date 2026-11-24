@@ -80,6 +80,16 @@ const SPORT_IMAGES: Record<string, string> = {
   "canot-kayak": "/sports/kayaking.jpg",
   surfing: "/sports/surfing.jpg",
   surf: "/sports/surfing.jpg",
+  "table-tennis": "/sports/table-tennis.jpg",
+  "tennis-de-table": "/sports/table-tennis.jpg",
+  "ping-pong": "/sports/table-tennis.jpg",
+  "horse-riding": "/sports/horse-riding.jpg",
+  equitation: "/sports/horse-riding.jpg",
+  cricket: "/sports/cricket.jpg",
+  criquet: "/sports/cricket.jpg",
+  skateboarding: "/sports/skateboarding.jpg",
+  "planche-a-roulettes": "/sports/skateboarding.jpg",
+  "planche-a-roulette": "/sports/skateboarding.jpg",
 };
 
 function toKey(value: string): string {
