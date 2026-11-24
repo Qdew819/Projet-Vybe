@@ -4,13 +4,15 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import AppShell, { useOpenCreateSheet } from "../../components/AppShell";
+import AppShell from "../../components/AppShell";
+import Avatar from "../../components/Avatar";
 import HomeEvents from "../../components/home/HomeEvents";
-import PostCard from "../../components/home/PostCard";
+import PostFeed from "../../components/home/PostFeed";
 import VideoCard from "../../components/home/VideoCard";
-import { SHOW_HOME_PREVIEW, previewPost, previewVideos } from "../../lib/home-preview";
+import { SHOW_HOME_PREVIEW, previewVideos } from "../../lib/home-preview";
 import { useT } from "../../lib/i18n";
 import { isLanguage, setLanguage } from "../../lib/language";
+import { initialsOf } from "../../lib/profile";
 import { sportImage } from "../../lib/sportImages";
 import { createClient } from "../../lib/supabase/client";
 import { isThemeChoice, setTheme } from "../../lib/theme";
@@ -57,6 +59,11 @@ export default function Accueil() {
   const t = useT();
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState("");
+  // Ma photo et mon nom, pour la barre « Quoi de neuf ? »
+  const [myAvatar, setMyAvatar] = useState<string | null>(null);
+  const [myName, setMyName] = useState("");
+  // Cercle de sport choisi : filtre le fil de publications (slug du sport)
+  const [sportFilter, setSportFilter] = useState<UserSport["sport"] | null>(null);
   const [pendingRequests, setPendingRequests] = useState(0);
   const [sports, setSports] = useState<UserSport[]>([]);
   const [showCityBanner, setShowCityBanner] = useState(false);
@@ -83,11 +90,16 @@ export default function Accueil() {
       setTheme(meta.theme);
       setLanguage(meta.language);
 
-      // Profil pas encore rempli (aucune ligne ou pas de date de naissance) : on passe par la création du profil.
+      // Profil pas encore créé (aucune ligne ou pas de nom d'utilisateur) : on passe par la création du profil.
+      // La date de naissance est vérifiée à part (private_profiles), par BirthDateGate dans app/template.tsx.
       // En cas d'erreur de lecture, on affiche quand même l'accueil plutôt que de bloquer la personne.
       const uid = data.user.id;
       setUserId(uid);
-      const { data: profile, error } = await supabase.from("profiles").select("birth_date").eq("id", uid).maybeSingle();
+      const { data: profile, error } = await supabase
+        .from("profiles")
+        .select("avatar_url, display_name, username")
+        .eq("id", uid)
+        .maybeSingle();
       if (error) {
         console.error(
           `Lecture du profil impossible : ${error.message} (code ${error.code})` +
@@ -95,10 +107,12 @@ export default function Accueil() {
             (error.hint ? ` — ${error.hint}` : "")
         );
       }
-      if (!error && !profile?.birth_date) {
+      if (!error && !profile?.username) {
         router.replace("/profil/creer");
         return;
       }
+      setMyAvatar(typeof profile?.avatar_url === "string" && profile.avatar_url ? profile.avatar_url : null);
+      setMyName(String(profile?.display_name || profile?.username || ""));
 
       // Lus en parallèle : si l'un échoue, le reste de l'accueil s'affiche quand même
       const [pendingResult, locationResult, sportsResult] = await Promise.all([
@@ -149,8 +163,21 @@ export default function Accueil() {
     toastTimer.current = setTimeout(() => setToast(""), 3000);
   }, []);
 
-  // Boutons d'exemple (publication, vidéos) : rien ne se passe, on annonce « Bientôt »
+  // Boutons d'exemple (vidéos) : rien ne se passe, on annonce « Bientôt »
   const soon = useCallback(() => announce(t("common.soon")), [announce, t]);
+
+  // Retour du formulaire de publication (?publie=1) : « Publié ! », puis on nettoie l'adresse.
+  // Le fil est relu à l'arrivée sur l'accueil : la nouvelle publication est en haut.
+  useEffect(() => {
+    if (!ready || !new URLSearchParams(window.location.search).get("publie")) return;
+    // Dans un rappel, une fois l'accueil affiché (l'adresse est nettoyée au même moment : si React relance
+    // l'effet en développement, le premier rappel est annulé et le second voit encore ?publie=1)
+    const timer = setTimeout(() => {
+      window.history.replaceState(window.history.state, "", window.location.pathname);
+      announce(t("publish.done"));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [ready, announce, t]);
 
   if (!ready) {
     return (
@@ -230,7 +257,11 @@ export default function Accueil() {
       >
         <ul className="flex w-max gap-3 px-4 pb-1 pt-1">
           <li>
-            <PublishShortcut label={t("create.post")} />
+            <Shortcut href="/publier" label={t("create.post")}>
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-8 w-8 text-accent-ink" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </Shortcut>
           </li>
           <li>
             <Shortcut href="/evenements" label={t("nav.events")}>
@@ -244,11 +275,17 @@ export default function Accueil() {
           {sports.length > 0 ? (
             sports.map(({ sport }) => (
               <li key={sport.id}>
-                <Shortcut href="/evenements" label={sport.name} image={sportImage(sport.slug, sport.name)}>
+                {/* Un clic filtre le fil de publications sur ce sport ; un 2e clic retire le filtre */}
+                <SportFilterShortcut
+                  label={sport.name}
+                  image={sportImage(sport.slug, sport.name)}
+                  selected={sportFilter?.slug === sport.slug}
+                  onClick={() => setSportFilter(sportFilter?.slug === sport.slug ? null : sport)}
+                >
                   <span aria-hidden="true" className="text-[28px] leading-none">
                     {sport.emoji}
                   </span>
-                </Shortcut>
+                </SportFilterShortcut>
               </li>
             ))
           ) : (
@@ -263,17 +300,19 @@ export default function Accueil() {
         </ul>
       </nav>
 
-      {/* Faux champ de recherche : le vrai champ est sur la page Communauté */}
+      {/* « Quoi de neuf ? » : ouvre le formulaire de publication (la recherche de personnes est sur la loupe en haut) */}
       <div className="mt-4 px-4">
         <Link
-          href="/personnes"
-          className="flex h-12 items-center gap-3 rounded-full border border-line bg-surface px-4 text-sm text-muted transition-colors hover:border-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
+          href="/publier"
+          className="flex min-h-14 items-center gap-3 rounded-2xl border border-line bg-surface px-3 py-2 transition-colors hover:border-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
         >
-          <svg {...iconProps} viewBox="0 0 24 24" className="h-5 w-5 shrink-0" strokeWidth={2.2}>
-            <circle cx="11" cy="11" r="7" />
-            <path d="M20 20l-3.5-3.5" />
+          <Avatar src={myAvatar} initial={initialsOf(myName || "?")} alt="" size={40} />
+          <span className="min-w-0 flex-1 truncate text-sm text-muted">{t("feed.whatsNew")}</span>
+          <svg {...iconProps} viewBox="0 0 24 24" className="h-6 w-6 shrink-0 text-accent-ink" strokeWidth={2}>
+            <rect x="3" y="5" width="18" height="14" rx="2" />
+            <circle cx="9" cy="10" r="1.8" />
+            <path d="M21 16l-5-5-8 8" />
           </svg>
-          {t("home.searchPlaceholder")}
         </Link>
       </div>
 
@@ -322,12 +361,28 @@ export default function Accueil() {
         <HomeEvents userId={userId} onMessage={announce} />
       </Section>
 
+      {/* Filtre actif (cercle de sport choisi en haut) : pastille pour le retirer */}
+      {sportFilter && (
+        <div className="mt-6 flex px-4">
+          <button
+            type="button"
+            onClick={() => setSportFilter(null)}
+            aria-label={t("feed.removeFilter").replace("{sport}", sportFilter.name)}
+            className="flex min-h-10 items-center gap-2 rounded-full border-2 border-accent-ink bg-accent-ink/10 px-4 text-sm font-bold text-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
+          >
+            <span aria-hidden="true">{sportFilter.emoji}</span>
+            {sportFilter.name}
+            <svg {...iconProps} viewBox="0 0 24 24" className="h-4 w-4" strokeWidth={3}>
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      <PostFeed me={userId} sport={sportFilter?.slug ?? null} onMessage={announce} />
+
       {SHOW_HOME_PREVIEW && (
         <>
-          <div className="mt-6 px-4">
-            <PostCard {...previewPost} onLike={soon} onComment={soon} onShare={soon} onPlay={soon} inactive />
-          </div>
-
           <Section
             id="videos-populaires"
             title={t("home.popularVideos")}
@@ -411,17 +466,31 @@ function Shortcut({
   );
 }
 
-// « Publier » ouvre la même feuille que le bouton « + » de la barre du bas
-function PublishShortcut({ label }: { label: string }) {
-  const openCreate = useOpenCreateSheet();
+// Cercle de sport : filtre le fil de publications (anneau vert plus épais quand il est choisi)
+function SportFilterShortcut({
+  label,
+  image,
+  selected,
+  onClick,
+  children,
+}: {
+  label: string;
+  image: string | null;
+  selected: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const ring = selected ? "ring-4 ring-accent ring-offset-2 ring-offset-background" : "";
   return (
-    <button type="button" onClick={openCreate} aria-haspopup="dialog" className={shortcutBase}>
-      <span className={`${circle} border-accent`}>
-        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-8 w-8 text-accent-ink" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      </span>
-      <span className="w-full truncate text-[11px] font-semibold leading-tight">{label}</span>
+    <button type="button" onClick={onClick} aria-pressed={selected} className={shortcutBase}>
+      {image ? (
+        <span className={`relative block h-16 w-16 overflow-hidden rounded-full shadow-[0_0_12px_rgba(57,255,20,0.35)] transition-transform group-hover:scale-105 ${ring}`}>
+          <Image src={image} alt="" fill sizes="64px" className="object-cover" />
+        </span>
+      ) : (
+        <span className={`${circle} border-accent group-hover:border-accent-ink ${ring}`}>{children}</span>
+      )}
+      <span className={`w-full truncate text-[11px] leading-tight ${selected ? "font-black text-accent-ink" : "font-semibold"}`}>{label}</span>
     </button>
   );
 }

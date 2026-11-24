@@ -4,34 +4,14 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import AccountTypePicker, { type AccountType } from "../../../components/AccountTypePicker";
 import AvatarPicker from "../../../components/AvatarPicker";
+import BirthDateField from "../../../components/BirthDateField";
 import ProfileHeader from "../../../components/ProfileHeader";
 import UsernameDialog from "../../../components/UsernameDialog";
+import { ADULT_AGE, MIN_AGE, ageFrom, saveBirthDate } from "../../../lib/birthDate";
 import { useT } from "../../../lib/i18n";
 import { BIO_MAX, UNIQUE_VIOLATION, displayNameFromMetadata, isValidUsername } from "../../../lib/profile";
 import { createClient } from "../../../lib/supabase/client";
 import { useAvatarChoice } from "../../../lib/useAvatarChoice";
-
-const MIN_AGE = 16; // même âge minimum que l'inscription
-const ADULT_AGE = 18;
-
-// Date du jour au format AAAA-MM-JJ (heure locale), pour la limite du champ date
-function todayIso(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-// Âge en années complètes à partir d'une date AAAA-MM-JJ, ou null si la date est vide ou invalide
-function ageFrom(birthDate: string): number | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate);
-  if (!match) return null;
-  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
-  const now = new Date();
-  let age = now.getFullYear() - year;
-  const birthdayPassed = now.getMonth() + 1 > month || (now.getMonth() + 1 === month && now.getDate() >= day);
-  if (!birthdayPassed) age -= 1;
-  return age >= 0 ? age : null;
-}
 
 export default function CreerProfil() {
   const router = useRouter();
@@ -115,7 +95,6 @@ export default function CreerProfil() {
         id: data.user.id,
         username,
         display_name: displayName,
-        birth_date: birthDate,
         bio: bio.trim() || null,
         is_private: accountType === "private",
         // Sans photo choisie, on ne touche pas à avatar_url
@@ -136,6 +115,15 @@ export default function CreerProfil() {
       } else {
         setError(t("profile.saveError"));
       }
+      return;
+    }
+    // Date de naissance : dans private_profiles (lue par get_age, jamais affichée aux autres).
+    // Si elle n'est pas enregistrée, on reste sur la page avec un message visible.
+    const birthError = await saveBirthDate(supabase, data.user.id, birthDate, false);
+    if (birthError) {
+      console.error(`Enregistrement de la date de naissance impossible : ${birthError}`);
+      setSaving(false);
+      setError(t("birth.saveError"));
       return;
     }
     router.push("/profil/ville");
@@ -207,20 +195,13 @@ export default function CreerProfil() {
         </div>
 
         <div className="mt-6">
-          <label htmlFor="birthDate" className="mb-1.5 block text-sm font-semibold">
+          <p id="naissance-label" className="mb-1.5 block text-sm font-semibold">
             {t("profile.birthDate")}
-          </label>
-          <input
-            id="birthDate"
-            type="date"
-            required
-            autoComplete="bday"
-            max={todayIso()}
-            value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
-            className={fieldClass}
-          />
-          <p className="mt-1.5 text-xs text-muted">{t("profile.birthDateHint")}</p>
+          </p>
+          <BirthDateField id="naissance" value={birthDate} onChange={setBirthDate} describedBy="naissance-aide" />
+          <p id="naissance-aide" className="mt-1.5 text-xs text-muted">
+            {t("birth.private")}
+          </p>
         </div>
 
         <div className="mt-6">

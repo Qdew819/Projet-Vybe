@@ -38,7 +38,7 @@ export default function HomeEvents({ userId, onMessage }: { userId: string; onMe
   const [toDelete, setToDelete] = useState<EventRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
-  const { statuses, setStatuses, counts, setCounts, busyId, join, askLeave, leaveDialog } = useEventParticipation({
+  const { statuses, setStatuses, counts, setCounts, busyId, join, askLeave, leaveDialog, birthDateNotice } = useEventParticipation({
     userId,
     onMessage,
   });
@@ -141,6 +141,7 @@ export default function HomeEvents({ userId, onMessage }: { userId: string; onMe
         ))}
 
       {leaveDialog}
+      {birthDateNotice}
       <EventManageSheet
         eventId={managed?.id ?? null}
         title={managed?.title ?? ""}

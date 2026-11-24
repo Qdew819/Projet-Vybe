@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useT } from "../../../lib/i18n";
+import BirthDateField from "../../../components/BirthDateField";
+import { markBirthDateKnown } from "../../../components/BirthDateGate";
+import { MIN_AGE, ageFrom, fetchMyBirthDate, saveBirthDate } from "../../../lib/birthDate";
+import { useLanguage, useT } from "../../../lib/i18n";
 import { createClient } from "../../../lib/supabase/client";
 
 const PASSWORD_MIN = 8;
@@ -78,8 +81,16 @@ function StatusMessage({ message }: { message: Message }) {
 export default function CompteEtSecurite() {
   const router = useRouter();
   const t = useT();
+  const language = useLanguage();
   const [ready, setReady] = useState(false);
+  const [userId, setUserId] = useState("");
   const [email, setEmail] = useState("");
+
+  // Date de naissance (private_profiles) : undefined = lecture impossible, null = pas encore remplie
+  const [birthDate, setBirthDate] = useState<string | null | undefined>(null);
+  const [birthDraft, setBirthDraft] = useState("");
+  const [birthBusy, setBirthBusy] = useState(false);
+  const [birthMessage, setBirthMessage] = useState<Message>(null);
   const [hasPassword, setHasPassword] = useState(false);
 
   // Mot de passe
@@ -105,12 +116,20 @@ export default function CompteEtSecurite() {
   const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
-    createClient()
-      .auth.getUser()
-      .then(({ data }) => {
+    const supabase = createClient();
+    supabase.auth
+      .getUser()
+      .then(async ({ data }) => {
         if (!data.user) {
           router.replace("/connexion");
           return;
+        }
+        setUserId(data.user.id);
+        try {
+          setBirthDate(await fetchMyBirthDate(supabase, data.user.id));
+        } catch (err) {
+          console.error(err);
+          setBirthDate(undefined);
         }
         // Le compte a un mot de passe s'il a une identité « email » (sinon : seulement Google)
         const providers = data.user.app_metadata?.providers;
@@ -120,6 +139,32 @@ export default function CompteEtSecurite() {
         setReady(true);
       });
   }, [router]);
+
+  async function addBirthDate(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBirthMessage(null);
+    const age = ageFrom(birthDraft);
+    if (age === null) {
+      setBirthMessage({ kind: "error", text: t("profile.errorBirthDate") });
+      return;
+    }
+    if (age < MIN_AGE) {
+      setBirthMessage({ kind: "error", text: t("profile.errorTooYoung") });
+      return;
+    }
+    setBirthBusy(true);
+    // Moins de 18 ans : le compte passe en privé, comme à l'inscription
+    const problem = await saveBirthDate(createClient(), userId, birthDraft);
+    setBirthBusy(false);
+    if (problem) {
+      console.error(`Enregistrement de la date de naissance impossible : ${problem}`);
+      setBirthMessage({ kind: "error", text: t("birth.saveError") });
+      return;
+    }
+    markBirthDateKnown(userId);
+    setBirthDate(birthDraft);
+    setBirthMessage({ kind: "success", text: t("birth.saved") });
+  }
 
   async function changePassword(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -322,6 +367,48 @@ export default function CompteEtSecurite() {
             </form>
           ) : (
             <p className="rounded-2xl border border-line bg-surface p-4 text-sm text-muted">{t("account.emailGoogle")}</p>
+          )}
+        </section>
+
+        {/* Date de naissance : à remplir si elle manque, sinon en lecture seule */}
+        <section aria-labelledby="naissance-label" className="mt-10">
+          <h2 id="naissance-label" className={sectionTitle}>
+            {t("profile.birthDate")}
+          </h2>
+          {birthDate === undefined ? (
+            <p className="text-sm text-danger">{t("birth.loadError")}</p>
+          ) : birthDate ? (
+            <div className="rounded-2xl border border-line bg-surface p-4">
+              <p className="font-semibold">
+                {new Intl.DateTimeFormat(language === "en" ? "en-CA" : "fr-CA", { dateStyle: "long", timeZone: "UTC" }).format(
+                  new Date(`${birthDate}T00:00:00Z`)
+                )}
+              </p>
+              <p className="mt-1 text-sm text-muted">{t("birth.contactSupport")}</p>
+              <StatusMessage message={birthMessage} />
+            </div>
+          ) : (
+            <form onSubmit={addBirthDate} className="flex flex-col gap-4">
+              <div>
+                <BirthDateField
+                  id="naissance"
+                  value={birthDraft}
+                  onChange={(value) => {
+                    setBirthDraft(value);
+                    setBirthMessage(null);
+                  }}
+                  invalid={birthMessage?.kind === "error"}
+                  describedBy="naissance-aide"
+                />
+                <p id="naissance-aide" className="mt-1.5 text-xs text-muted">
+                  {t("birth.private")}
+                </p>
+              </div>
+              <StatusMessage message={birthMessage} />
+              <button type="submit" disabled={birthBusy || !birthDraft} className={primaryButton}>
+                {birthBusy ? t("common.saving") : t("birth.add")}
+              </button>
+            </form>
           )}
         </section>
 

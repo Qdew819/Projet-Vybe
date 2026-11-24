@@ -85,6 +85,7 @@ export default function CreateSheet({ open, onClose }: { open: boolean; onClose:
           </li>
           <li>
             <SheetOption
+              href="/publier"
               title={t("create.post")}
               hint={t("create.postHint")}
               soonLabel={t("common.soon")}

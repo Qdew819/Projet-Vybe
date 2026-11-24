@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Avatar from "../../../components/Avatar";
+import BirthDateNotice from "../../../components/BirthDateNotice";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import { leaveTexts } from "../../../components/useEventParticipation";
 import {
@@ -19,6 +20,7 @@ import {
   eventActionErrorKey,
   eventSaveErrorKey,
   formatEventDate,
+  isExpectedRefusal,
   leaveEvent,
   toDateInput,
   toParticipants,
@@ -92,6 +94,8 @@ function Evenement() {
   const [coverFailed, setCoverFailed] = useState(false);
   // Heure du chargement : sert à savoir si l'événement est déjà passé
   const [loadedAt, setLoadedAt] = useState(0);
+  // Inscription refusée faute de date de naissance : bandeau avec lien vers Paramètres → Compte
+  const [birthDateMissing, setBirthDateMissing] = useState(false);
 
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -248,10 +252,13 @@ function Evenement() {
     if (expected === "going") setGoingCount((n) => n + 1);
     const { error } = await createClient().rpc("join_event", { p_event: event.id });
     if (error) {
-      console.error(`Inscription impossible : ${error.message} (code ${error.code})`);
+      const key = eventActionErrorKey(error);
+      // Refus prévus (date de naissance manquante…) : annoncés, pas envoyés en console.error
+      if (!isExpectedRefusal(key)) console.error(`Inscription impossible : ${error.message} (code ${error.code})`);
       setParticipants(previous);
       if (expected === "going") setGoingCount((n) => Math.max(0, n - 1));
-      showToast(t(eventActionErrorKey(error)));
+      if (key === "event.errorBirthDate") setBirthDateMissing(true);
+      else showToast(t(key));
     } else {
       await refresh(event, me);
       showToast(t(expected === "pending" ? "event.requested" : expected === "waitlist" ? "event.waitlisted" : "event.joined"));
@@ -681,6 +688,8 @@ function Evenement() {
           if (!confirmBusy) setConfirm(null);
         }}
       />
+
+      {birthDateMissing && <BirthDateNotice onClose={() => setBirthDateMissing(false)} />}
 
       {/* Messages (aria-live), au-dessus du bouton du bas */}
       <div

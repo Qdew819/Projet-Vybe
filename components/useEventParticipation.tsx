@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import BirthDateNotice from "./BirthDateNotice";
 import ConfirmDialog from "./ConfirmDialog";
 import { joinEvent, leaveEvent, participationOf, type EventRow, type ParticipantStatus } from "../lib/events";
 import { useT, type MessageKey } from "../lib/i18n";
@@ -36,6 +37,8 @@ export function useEventParticipation({
   const [leaving, setLeaving] = useState<{ event: EventRow; status: ParticipantStatus } | null>(null);
   const [leaveBusy, setLeaveBusy] = useState(false);
   const [leaveError, setLeaveError] = useState("");
+  // Inscription refusée faute de date de naissance : bandeau avec lien vers Paramètres → Compte
+  const [birthDateMissing, setBirthDateMissing] = useState(false);
 
   async function join(event: EventRow) {
     // L'organisateur n'a pas de bouton d'inscription (sa carte affiche « Organisateur »)
@@ -56,7 +59,8 @@ export function useEventParticipation({
         return next;
       });
       setCounts((current) => new Map(current).set(event.id, previousCount));
-      onMessage(t(result.errorKey));
+      if (result.errorKey === "event.errorBirthDate") setBirthDateMissing(true);
+      else onMessage(t(result.errorKey));
     } else {
       const { status, count } = result;
       if (status) setStatuses((current) => new Map(current).set(event.id, status));
@@ -127,5 +131,7 @@ export function useEventParticipation({
     />
   );
 
-  return { statuses, setStatuses, counts, setCounts, busyId, join, askLeave, leaveDialog };
+  const birthDateNotice = birthDateMissing ? <BirthDateNotice onClose={() => setBirthDateMissing(false)} /> : null;
+
+  return { statuses, setStatuses, counts, setCounts, busyId, join, askLeave, leaveDialog, birthDateNotice };
 }

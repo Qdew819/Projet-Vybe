@@ -76,7 +76,7 @@ export default function Evenements() {
   }, []);
 
   // Inscription / désinscription depuis les cartes ; un événement rejoint apparaît dans « Mes événements »
-  const { statuses, setStatuses, counts, setCounts, busyId, join, askLeave, leaveDialog } = useEventParticipation({
+  const { statuses, setStatuses, counts, setCounts, busyId, join, askLeave, leaveDialog, birthDateNotice } = useEventParticipation({
     userId: me,
     onMessage: showToast,
     onJoined: (event) => setMine((current) => (current.some((e) => e.id === event.id) ? current : [event, ...current])),
@@ -295,6 +295,7 @@ export default function Evenements() {
       </div>
 
       {leaveDialog}
+      {birthDateNotice}
 
       <EventManageSheet
         eventId={managed?.id ?? null}

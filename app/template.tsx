@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import BirthDateGate from "../components/BirthDateGate";
 import { applyTheme, getSavedTheme } from "../lib/theme";
 
 // Applique le thème choisi sur toutes les pages (l'écran d'accueil "/" reste sombre).
@@ -20,5 +21,11 @@ export default function Template({ children }: { children: React.ReactNode }) {
     return () => media.removeEventListener("change", update);
   }, []);
 
-  return children;
+  return (
+    <>
+      {/* Compte sans date de naissance → « Complète ton profil » (voir components/BirthDateGate.tsx) */}
+      <BirthDateGate />
+      {children}
+    </>
+  );
 }

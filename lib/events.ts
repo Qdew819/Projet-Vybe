@@ -199,9 +199,17 @@ export function toParticipants(rows: Record<string, unknown>[] | null): Particip
   });
 }
 
+// Refus prévus par la base (pas des pannes) : annoncés à la personne, jamais envoyés en console.error
+export const EXPECTED_REFUSALS: MessageKey[] = ["event.errorBirthDate", "leave.organizerError"];
+
+export function isExpectedRefusal(key: MessageKey): boolean {
+  return EXPECTED_REFUSALS.includes(key);
+}
+
 // Message d'erreur des fonctions join_event, leave_event, respond_to_join et remove_participant
 export function eventActionErrorKey(error: { message?: string; code?: string; details?: string | null }): MessageKey {
   const text = `${error.message ?? ""} ${error.details ?? ""}`;
+  if (text.includes("date_naissance_manquante")) return "event.errorBirthDate";
   if (text.includes("organisateur")) return "leave.organizerError";
   if (text.includes("age_insuffisant")) return "event.errorAge";
   if (text.includes("termine")) return "event.errorEnded";
@@ -310,8 +318,9 @@ export type JoinResult =
 export async function joinEvent(supabase: SupabaseClient, eventId: string, userId: string): Promise<JoinResult> {
   const { error } = await supabase.rpc("join_event", { p_event: eventId });
   if (error) {
-    console.error(`Inscription impossible : ${error.message} (code ${error.code})`);
-    return { ok: false, errorKey: eventActionErrorKey(error) };
+    const errorKey = eventActionErrorKey(error);
+    if (!isExpectedRefusal(errorKey)) console.error(`Inscription impossible : ${error.message} (code ${error.code})`);
+    return { ok: false, errorKey };
   }
   const [{ data: row }, { data: n }] = await Promise.all([
     supabase.from("event_participants").select("*").eq("event_id", eventId).eq("user_id", userId).maybeSingle(),
@@ -340,8 +349,8 @@ export async function leaveEvent(
   const { error } = await supabase.rpc("leave_event", { p_event: event.id });
   if (error) {
     const errorKey = eventActionErrorKey(error);
-    // Refus « organisateur » : cas prévu, annoncé à la personne (toast), pas une panne
-    if (errorKey !== "leave.organizerError") {
+    // Refus prévu (organisateur…) : annoncé à la personne, pas une panne
+    if (!isExpectedRefusal(errorKey)) {
       console.error(`Désinscription impossible : ${error.message} (code ${error.code})`);
     }
     return { ok: false, errorKey };
