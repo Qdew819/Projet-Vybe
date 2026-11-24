@@ -2,19 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConfirmDialog from "../ConfirmDialog";
-import EventCard, { EventCardSkeleton, type CardRole } from "../EventCard";
+import EventCard, { EventCardSkeleton } from "../EventCard";
 import EventManageSheet from "../EventManageSheet";
 import EventsEmptyState from "../EventsEmptyState";
+import { useEventParticipation } from "../useEventParticipation";
 import {
   deleteEvent,
   fetchGoingCounts,
   fetchMyPlace,
   fetchMyStatuses,
   fetchUpcomingEvents,
-  joinEvent,
   rankByProximity,
   type EventRow,
-  type ParticipantStatus,
 } from "../../lib/events";
 import { useT } from "../../lib/i18n";
 import { createClient } from "../../lib/supabase/client";
@@ -33,14 +32,15 @@ export default function HomeEvents({ userId, onMessage }: { userId: string; onMe
   const [attempt, setAttempt] = useState(0);
   const [events, setEvents] = useState<EventRow[]>([]);
   const [catalog, setCatalog] = useState<CatalogSport[]>([]);
-  const [counts, setCounts] = useState<Map<string, number>>(new Map());
-  const [statuses, setStatuses] = useState<Map<string, ParticipantStatus>>(new Map());
   const [age, setAge] = useState<number | null>(null);
-  const [joining, setJoining] = useState<string | null>(null);
   const [managed, setManaged] = useState<EventRow | null>(null);
   const [toDelete, setToDelete] = useState<EventRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const { statuses, setStatuses, counts, setCounts, busyId, join, askLeave, leaveDialog } = useEventParticipation({
+    userId,
+    onMessage,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -74,37 +74,10 @@ export default function HomeEvents({ userId, onMessage }: { userId: string; onMe
     return () => {
       cancelled = true;
     };
-  }, [userId, attempt]);
+  }, [userId, attempt, setCounts, setStatuses]);
 
   const sportsBySlug = useMemo(() => new Map(catalog.map((s) => [s.slug, s])), [catalog]);
 
-  function roleFor(event: EventRow): CardRole {
-    if (event.organizer_id === userId) return "organizer";
-    return statuses.get(event.id) ?? null;
-  }
-
-  async function join(event: EventRow) {
-    if (joining) return;
-    const expected: ParticipantStatus = event.join_mode === "approval" ? "pending" : "going";
-    const previousStatuses = statuses;
-    const previousCount = counts.get(event.id) ?? 0;
-    setJoining(event.id);
-    // Mise à jour optimiste
-    setStatuses(new Map(statuses).set(event.id, expected));
-    if (expected === "going") setCounts(new Map(counts).set(event.id, previousCount + 1));
-    const result = await joinEvent(createClient(), event.id, userId);
-    if (!result.ok) {
-      setStatuses(previousStatuses);
-      setCounts((current) => new Map(current).set(event.id, previousCount));
-      onMessage(t(result.errorKey));
-    } else {
-      const { status, count } = result;
-      if (status) setStatuses((current) => new Map(current).set(event.id, status));
-      if (count !== null) setCounts((current) => new Map(current).set(event.id, count));
-      onMessage(t(result.messageKey));
-    }
-    setJoining(null);
-  }
 
   async function confirmDelete() {
     if (!toDelete) return;
@@ -157,14 +130,17 @@ export default function HomeEvents({ userId, onMessage }: { userId: string; onMe
             event={event}
             sport={sportsBySlug.get(event.sport)}
             goingCount={counts.get(event.id) ?? 0}
-            role={roleFor(event)}
+            isOrganizer={event.organizer_id === userId}
+            status={statuses.get(event.id) ?? null}
             tooYoung={age !== null && age < event.min_age}
-            busy={joining === event.id}
+            busy={busyId === event.id}
             onJoin={() => join(event)}
+            onLeave={() => askLeave(event)}
             onManage={() => setManaged(event)}
           />
         ))}
 
+      {leaveDialog}
       <EventManageSheet
         eventId={managed?.id ?? null}
         title={managed?.title ?? ""}

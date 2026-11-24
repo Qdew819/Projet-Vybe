@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Avatar from "../../../components/Avatar";
 import ConfirmDialog from "../../../components/ConfirmDialog";
+import { leaveTexts } from "../../../components/useEventParticipation";
 import {
   EVENT_CAPACITY_MAX,
   EVENT_CAPACITY_MIN,
@@ -227,8 +228,8 @@ function Evenement() {
   const tooYoung = !!event && age !== null && age < event.min_age;
 
   const going = useMemo(
-    () => participants.filter((p) => p.status === "going" && p.userId !== event?.organizer_id),
-    [participants, event]
+    () => participants.filter((p) => p.status === "going"),
+    [participants]
   );
   const pending = useMemo(() => participants.filter((p) => p.status === "pending"), [participants]);
   const waitlist = useMemo(() => participants.filter((p) => p.status === "waitlist"), [participants]);
@@ -238,7 +239,9 @@ function Evenement() {
   async function join() {
     if (!event || busy) return;
     const previous = participants;
-    const expected: ParticipantStatus = event.join_mode === "approval" ? "pending" : full ? "waitlist" : "going";
+    // L'organisateur est inscrit directement, même en mode « sur approbation »
+    const expected: ParticipantStatus =
+      event.join_mode === "approval" && !isOrganizer ? "pending" : full ? "waitlist" : "going";
     setBusy(true);
     // Mise à jour optimiste
     setParticipants([...participants.filter((p) => p.userId !== me), { userId: me, status: expected }]);
@@ -490,7 +493,7 @@ function Evenement() {
                       <div className="min-w-0 flex-1">
                         <PersonLine person={person} fallback={unknown} />
                       </div>
-                      {isOrganizer && person && !event.cancelled && (
+                      {isOrganizer && person && person.id !== me && !event.cancelled && (
                         <button
                           type="button"
                           onClick={() => {
@@ -608,28 +611,26 @@ function Evenement() {
         </div>
       </div>
 
-      {/* Bouton principal, fixé en bas (pas pour l'organisateur) */}
-      {!isOrganizer && (
-        <div className="fixed inset-x-0 bottom-0 z-30">
-          <div className="mx-auto w-full max-w-[500px] border-t border-line bg-background/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-md">
-            <MainAction
-              status={myStatus}
-              cancelled={event.cancelled}
-              ended={ended}
-              full={full}
-              tooYoung={tooYoung}
-              minAge={event.min_age}
-              approval={event.join_mode === "approval"}
-              busy={busy}
-              onJoin={join}
-              onLeave={() => {
-                setConfirmError("");
-                if (myStatus) setConfirm({ kind: "leave", status: myStatus });
-              }}
-            />
-          </div>
+      {/* Bouton principal, fixé en bas (l'organisateur peut aussi s'inscrire à son propre événement) */}
+      <div className="fixed inset-x-0 bottom-0 z-30">
+        <div className="mx-auto w-full max-w-[500px] border-t border-line bg-background/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-md">
+          <MainAction
+            status={myStatus}
+            cancelled={event.cancelled}
+            ended={ended}
+            full={full}
+            tooYoung={tooYoung}
+            minAge={event.min_age}
+            approval={event.join_mode === "approval" && !isOrganizer}
+            busy={busy}
+            onJoin={join}
+            onLeave={() => {
+              setConfirmError("");
+              if (myStatus) setConfirm({ kind: "leave", status: myStatus });
+            }}
+          />
         </div>
-      )}
+      </div>
 
       <ConfirmDialog
         open={confirm !== null}
@@ -638,28 +639,29 @@ function Evenement() {
             ? t("event.removeTitle").replace("{name}", personName(confirm.person, unknown))
             : confirm?.kind === "delete"
               ? t("event.deleteTitle")
-              : confirm?.kind === "leave" && confirm.status === "pending"
-                ? t("event.cancelRequestTitle")
-                : t("event.leaveTitle")
+              : confirm?.kind === "leave"
+                ? t(leaveTexts(confirm.status).title)
+                : ""
         }
         description={
           confirm?.kind === "remove"
             ? t("event.removeText")
             : confirm?.kind === "delete"
               ? t("event.deleteText")
-              : confirm?.kind === "leave" && confirm.status === "pending"
-                ? undefined
-                : t("event.leaveText")
+              : confirm?.kind === "leave"
+                ? t(leaveTexts(confirm.status).text).replace("{title}", event.title)
+                : undefined
         }
         confirmLabel={
           confirm?.kind === "remove"
             ? t("event.remove")
             : confirm?.kind === "delete"
               ? t("event.deleteConfirm")
-              : confirm?.kind === "leave" && confirm.status === "pending"
-                ? t("event.cancelRequest")
-                : t("event.leaveConfirm")
+              : confirm?.kind === "leave"
+                ? t(leaveTexts(confirm.status).confirm)
+                : ""
         }
+        cancelLabel={confirm?.kind === "leave" ? t(leaveTexts(confirm.status).stay) : undefined}
         danger
         busy={confirmBusy}
         error={confirmError}

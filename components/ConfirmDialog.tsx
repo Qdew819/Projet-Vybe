@@ -12,6 +12,7 @@ export default function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel,
   busy = false,
   danger = false,
   error,
@@ -22,6 +23,7 @@ export default function ConfirmDialog({
   title: string;
   description?: string;
   confirmLabel: string;
+  cancelLabel?: string; // texte du bouton qui ferme sans rien faire (« Annuler » par défaut)
   busy?: boolean;
   danger?: boolean; // bouton de confirmation rouge (action destructive)
   error?: string;
@@ -80,7 +82,7 @@ export default function ConfirmDialog({
           disabled={busy}
           className="flex-1 rounded-2xl border border-line py-3 text-sm font-bold disabled:opacity-60"
         >
-          {t("common.cancel")}
+          {cancelLabel ?? t("common.cancel")}
         </button>
         <button
           type="button"

@@ -312,3 +312,16 @@ export async function joinEvent(supabase: SupabaseClient, eventId: string, userI
     messageKey: status === "pending" ? "event.requested" : status === "waitlist" ? "event.waitlisted" : "event.joined",
   };
 }
+
+export type LeaveResult = { ok: false; errorKey: MessageKey } | { ok: true; count: number | null };
+
+// Désinscription (leave_event) : quitter l'événement, annuler sa demande ou quitter la liste d'attente
+export async function leaveEvent(supabase: SupabaseClient, eventId: string): Promise<LeaveResult> {
+  const { error } = await supabase.rpc("leave_event", { p_event: eventId });
+  if (error) {
+    console.error(`Désinscription impossible : ${error.message} (code ${error.code})`);
+    return { ok: false, errorKey: eventActionErrorKey(error) };
+  }
+  const { data: n } = await supabase.rpc("event_going_count", { p_event: eventId });
+  return { ok: true, count: typeof n === "number" ? n : null };
+}

@@ -1,15 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { formatEventDate, type EventRow, type ParticipantStatus } from "../lib/events";
 import { useLanguage, useT } from "../lib/i18n";
 import { sportImage } from "../lib/sportImages";
 import type { CatalogSport } from "../lib/userSports";
-
-// Rôle de la personne qui regarde la carte
-export type CardRole = "organizer" | ParticipantStatus | null;
 
 const metaIcon = "h-3.5 w-3.5 shrink-0 text-accent-ink";
 const iconProps = {
@@ -23,26 +20,31 @@ const iconProps = {
 };
 
 // Carte « Événements près de toi » : vignette à gauche, titre, lieu, date, participants, bouton en bas à droite.
-// Toute la carte mène à /evenements/[id] ; seul le bouton « S'inscrire » agit sur place (onJoin).
+// Toute la carte mène à /evenements/[id] ; les boutons « S'inscrire » (onJoin) et « Gérer » (onManage) agissent sur place.
+// L'organisateur peut aussi s'inscrire à son propre événement : il voit alors les deux boutons.
 export default function EventCard({
   event,
   sport,
   goingCount,
-  role,
+  isOrganizer,
+  status,
   ended = false,
   tooYoung = false,
   busy = false,
   onJoin,
+  onLeave,
   onManage,
 }: {
   event: EventRow;
   sport?: CatalogSport;
   goingCount: number;
-  role: CardRole;
+  isOrganizer: boolean;
+  status: ParticipantStatus | null; // mon inscription à cet événement
   ended?: boolean;
   tooYoung?: boolean;
   busy?: boolean;
   onJoin?: () => void;
+  onLeave?: () => void; // clic sur mon statut (« Inscrit ✓ »…) : propose de me désinscrire
   onManage?: () => void; // organisateur : ouvre le choix Modifier / Supprimer
 }) {
   const t = useT();
@@ -61,36 +63,45 @@ export default function EventCard({
         : t("event.participantsN").replace("{n}", String(goingCount));
 
   const pill = "relative z-10 flex min-h-10 shrink-0 items-center rounded-full px-4 text-xs font-bold";
-  let action;
-  if (event.cancelled && role !== "organizer")
-    action = <span className={`${pill} border border-line text-muted`}>{t("card.cancelled")}</span>;
-  else if (role === "organizer")
-    action = onManage ? (
+  const muted = `${pill} border border-line text-muted`;
+
+  // Inscription (tout le monde, organisateur compris)
+  let joinAction: ReactNode = null;
+  if (event.cancelled) joinAction = isOrganizer ? null : <span className={muted}>{t("card.cancelled")}</span>;
+  else if (ended) joinAction = isOrganizer ? null : <span className={muted}>{t("card.ended")}</span>;
+  else if (status) {
+    // Mon statut : un bouton qui propose de me désinscrire (ou d'annuler ma demande)
+    const label = status === "going" ? t("card.going") : status === "pending" ? t("card.pending") : t("card.waitlist");
+    const look = status === "going" ? "border border-accent-ink text-accent-ink hover:bg-accent-ink/10" : "bg-line text-muted hover:text-foreground";
+    joinAction = onLeave ? (
       <button
         type="button"
-        onClick={onManage}
+        onClick={onLeave}
+        disabled={busy}
         aria-haspopup="dialog"
-        aria-label={t("card.manageLabel").replace("{title}", event.title)}
-        className={`${pill} border border-accent-ink text-accent-ink transition-colors hover:bg-accent-ink/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink`}
+        aria-label={`${label} — ${t("card.leaveLabel").replace("{title}", event.title)}`}
+        className={`${pill} ${look} transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink disabled:opacity-60`}
       >
-        {t("card.manage")}
+        {label}
       </button>
     ) : (
-      <span className={`${pill} border border-accent-ink text-accent-ink`}>{t("card.manage")}</span>
+      <span className={`${pill} ${look}`}>{label}</span>
     );
-  else if (ended) action = <span className={`${pill} border border-line text-muted`}>{t("card.ended")}</span>;
-  else if (role === "going") action = <span className={`${pill} border border-accent-ink text-accent-ink`}>{t("card.going")}</span>;
-  else if (role === "pending") action = <span className={`${pill} bg-line text-muted`}>{t("card.pending")}</span>;
-  else if (role === "waitlist") action = <span className={`${pill} bg-line text-muted`}>{t("card.waitlist")}</span>;
+  }
   else if (tooYoung)
-    action = (
-      <span aria-disabled="true" className={`${pill} border border-line text-muted`}>
+    joinAction = (
+      <span aria-disabled="true" className={muted}>
         {event.min_age >= 18 ? t("eventForm.age18") : t("eventForm.age16")}
       </span>
     );
-  else if (full && event.join_mode === "open") action = <span aria-disabled="true" className={`${pill} border border-line text-muted`}>{t("card.full")}</span>;
+  else if (full && (event.join_mode === "open" || isOrganizer))
+    joinAction = (
+      <span aria-disabled="true" className={muted}>
+        {t("card.full")}
+      </span>
+    );
   else
-    action = (
+    joinAction = (
       <button
         type="button"
         onClick={onJoin}
@@ -98,9 +109,25 @@ export default function EventCard({
         aria-label={t("card.joinLabel").replace("{title}", event.title)}
         className={`${pill} bg-accent text-on-accent transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink disabled:opacity-60`}
       >
-        {event.join_mode === "approval" ? t("card.request") : t("card.join")}
+        {/* L'organisateur n'a pas à demander la permission à lui-même */}
+        {event.join_mode === "approval" && !isOrganizer ? t("card.request") : t("card.join")}
       </button>
     );
+
+  // Gérer (organisateur seulement)
+  const manageAction: ReactNode = !isOrganizer ? null : onManage ? (
+    <button
+      type="button"
+      onClick={onManage}
+      aria-haspopup="dialog"
+      aria-label={t("card.manageLabel").replace("{title}", event.title)}
+      className={`${pill} border border-accent-ink text-accent-ink transition-colors hover:bg-accent-ink/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink`}
+    >
+      {t("card.manage")}
+    </button>
+  ) : (
+    <span className={`${pill} border border-accent-ink text-accent-ink`}>{t("card.manage")}</span>
+  );
 
   return (
     <article className="relative flex gap-3 rounded-2xl border border-line bg-surface p-3 transition-colors focus-within:border-accent-ink hover:border-accent-ink">
@@ -147,7 +174,10 @@ export default function EventCard({
             <span className="truncate">{count}</span>
           </li>
         </ul>
-        <div className="mt-auto flex justify-end pt-2">{action}</div>
+        <div className="mt-auto flex flex-wrap justify-end gap-2 pt-2">
+          {joinAction}
+          {manageAction}
+        </div>
       </div>
     </article>
   );

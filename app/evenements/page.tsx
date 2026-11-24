@@ -6,8 +6,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "../../components/AppShell";
 import ConfirmDialog from "../../components/ConfirmDialog";
-import EventCard, { EventCardSkeleton, type CardRole } from "../../components/EventCard";
+import EventCard, { EventCardSkeleton } from "../../components/EventCard";
 import EventManageSheet from "../../components/EventManageSheet";
+import { useEventParticipation } from "../../components/useEventParticipation";
 import EventsEmptyState from "../../components/EventsEmptyState";
 import {
   EVENT_COLUMNS,
@@ -16,10 +17,8 @@ import {
   fetchMyPlace,
   fetchMyStatuses,
   fetchUpcomingEvents,
-  joinEvent,
   rankByProximity,
   type EventRow,
-  type ParticipantStatus,
 } from "../../lib/events";
 import { useT } from "../../lib/i18n";
 import { sportImage } from "../../lib/sportImages";
@@ -56,9 +55,6 @@ export default function Evenements() {
   const [catalog, setCatalog] = useState<CatalogSport[]>([]);
   const [upcoming, setUpcoming] = useState<EventRow[]>([]);
   const [mine, setMine] = useState<EventRow[]>([]);
-  const [counts, setCounts] = useState<Map<string, number>>(new Map());
-  const [statuses, setStatuses] = useState<Map<string, ParticipantStatus>>(new Map());
-  const [joining, setJoining] = useState<string | null>(null);
   // « Gérer » : événement dont le menu Modifier / Supprimer est ouvert, puis celui à supprimer
   const [managed, setManaged] = useState<EventRow | null>(null);
   const [toDelete, setToDelete] = useState<EventRow | null>(null);
@@ -77,6 +73,13 @@ export default function Evenements() {
       if (toastTimer.current) clearTimeout(toastTimer.current);
     };
   }, []);
+
+  // Inscription / désinscription depuis les cartes ; un événement rejoint apparaît dans « Mes événements »
+  const { statuses, setStatuses, counts, setCounts, busyId, join, askLeave, leaveDialog } = useEventParticipation({
+    userId: me,
+    onMessage: showToast,
+    onJoined: (event) => setMine((current) => (current.some((e) => e.id === event.id) ? current : [event, ...current])),
+  });
 
   useEffect(() => {
     const supabase = createClient();
@@ -166,35 +169,6 @@ export default function Evenements() {
     return slugs.map((slug) => sportsBySlug.get(slug) ?? { id: 0, slug, name: slug, emoji: "🏅", search: slug });
   }, [list, sportsBySlug]);
 
-  function roleFor(event: EventRow): CardRole {
-    if (event.organizer_id === me) return "organizer";
-    return statuses.get(event.id) ?? null;
-  }
-
-  async function join(event: EventRow) {
-    if (joining) return;
-    const expected: ParticipantStatus = event.join_mode === "approval" ? "pending" : "going";
-    const previousStatuses = statuses;
-    const previousCount = counts.get(event.id) ?? 0;
-    setJoining(event.id);
-    // Mise à jour optimiste
-    setStatuses(new Map(statuses).set(event.id, expected));
-    if (expected === "going") setCounts(new Map(counts).set(event.id, previousCount + 1));
-    const result = await joinEvent(createClient(), event.id, me);
-    if (!result.ok) {
-      setStatuses(previousStatuses);
-      setCounts((current) => new Map(current).set(event.id, previousCount));
-      showToast(t(result.errorKey));
-    } else {
-      const { status, count } = result;
-      if (status) setStatuses((current) => new Map(current).set(event.id, status));
-      if (count !== null) setCounts((current) => new Map(current).set(event.id, count));
-      showToast(t(result.messageKey));
-      // L'événement apparaît aussi dans « Mes événements »
-      if (!mine.some((e) => e.id === event.id)) setMine((current) => [event, ...current]);
-    }
-    setJoining(null);
-  }
 
   async function confirmDelete() {
     if (!toDelete) return;
@@ -308,15 +282,19 @@ export default function Evenements() {
               event={event}
               sport={sportsBySlug.get(event.sport)}
               goingCount={counts.get(event.id) ?? 0}
-              role={roleFor(event)}
+              isOrganizer={event.organizer_id === me}
+              status={statuses.get(event.id) ?? null}
               ended={new Date(event.starts_at).getTime() <= loadedAt}
               tooYoung={age !== null && age < event.min_age}
-              busy={joining === event.id}
+              busy={busyId === event.id}
               onJoin={() => join(event)}
+              onLeave={() => askLeave(event)}
               onManage={() => setManaged(event)}
             />
           ))}
       </div>
+
+      {leaveDialog}
 
       <EventManageSheet
         eventId={managed?.id ?? null}
