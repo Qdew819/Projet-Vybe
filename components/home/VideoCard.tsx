@@ -1,33 +1,41 @@
-"use client";
-
+import Image from "next/image";
+import Link from "next/link";
 import { useT } from "../../lib/i18n";
-import MediaThumb, { DurationBadge, PlayIcon, type Media } from "./MediaThumb";
+import { DurationBadge, PlayIcon } from "./MediaThumb";
 
-// Vignette verticale de la rangée « Vidéos populaires » : image, petit bouton de lecture, durée et titre dessous.
+// Vignette verticale de la rangée « Vidéos populaires » : affiche, petit bouton de lecture, durée, début de la légende
+// sur 2 lignes et @pseudo de l'auteur. Ouvre la publication.
 export default function VideoCard({
-  title,
-  media,
+  href,
+  poster,
+  caption,
+  author,
   duration,
-  onPlay,
-  inactive = false,
 }: {
-  title: string;
-  media: Media;
+  href: string;
+  poster: string | null;
+  caption: string;
+  author: string; // « @pseudo » (ou le nom si pas de pseudo)
   duration: string;
-  onPlay: () => void;
-  inactive?: boolean;
 }) {
   const t = useT();
+  const title = caption || t("home.videoBy").replace("{name}", author);
   return (
-    <button
-      type="button"
-      onClick={onPlay}
-      aria-disabled={inactive || undefined}
-      aria-label={t("home.playTitled").replace("{title}", title).replace("{d}", duration)}
+    <Link
+      href={href}
+      aria-label={`${t("home.playTitled").replace("{title}", title).replace("{d}", duration)} — ${author}`}
       className="group block w-32 shrink-0 text-left focus-visible:outline-none"
     >
-      <span className="relative block aspect-[3/4] w-full overflow-hidden rounded-xl border border-line group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-accent-ink">
-        <MediaThumb media={media} sizes="128px" />
+      <span className="relative block aspect-[3/4] w-full overflow-hidden rounded-xl border border-line bg-black group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-accent-ink">
+        {poster ? (
+          <Image src={poster} alt="" fill unoptimized sizes="128px" className="object-cover transition-transform group-hover:scale-105" />
+        ) : (
+          <span
+            aria-hidden="true"
+            className="absolute inset-0"
+            style={{ background: "radial-gradient(circle at 30% 20%, rgba(57,255,20,0.25), transparent 60%), linear-gradient(160deg, #0b2e14, #020702)" }}
+          />
+        )}
         <span
           aria-hidden="true"
           className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"
@@ -36,9 +44,24 @@ export default function VideoCard({
         </span>
         <DurationBadge duration={duration} />
       </span>
-      <span aria-hidden="true" className="mt-1.5 line-clamp-2 block text-xs font-semibold leading-tight">
-        {title}
+      {caption && (
+        <span aria-hidden="true" className="mt-1.5 line-clamp-2 block text-xs font-semibold leading-tight">
+          {caption}
+        </span>
+      )}
+      <span aria-hidden="true" className="mt-0.5 block truncate text-[11px] text-muted">
+        {author}
       </span>
-    </button>
+    </Link>
+  );
+}
+
+export function VideoCardSkeleton() {
+  return (
+    <div aria-hidden="true" className="w-32 shrink-0">
+      <div className="aspect-[3/4] w-full animate-pulse rounded-xl bg-surface" />
+      <div className="mt-1.5 h-3 w-5/6 animate-pulse rounded bg-surface" />
+      <div className="mt-1 h-2.5 w-1/2 animate-pulse rounded bg-surface" />
+    </div>
   );
 }

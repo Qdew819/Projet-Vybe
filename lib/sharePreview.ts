@@ -5,7 +5,7 @@ import { connection } from "next/server";
 // Aperçus publics des liens partagés (/e, /p, /u) : lus côté serveur avec la clé administrateur (service role),
 // qui ignore les règles d'accès. On n'en renvoie donc QUE le strict nécessaire, et seulement pour du contenu public :
 // - événement : public et non annulé ; jamais l'adresse exacte ni les participants
-// - publication : auteur au compte public ; début du texte, première photo, pseudo
+// - publication : auteur au compte public ; début du texte, première photo (ou affiche de la vidéo), pseudo
 // - profil : compte public ; pseudo, nom, photo, bio
 // Toujours lus à la demande (await connection()), jamais mis en cache : un compte qui passe en privé ou un événement
 // qui devient « abonnés seulement » perd son aperçu tout de suite.
@@ -86,7 +86,7 @@ export const getPostPreview = cache(async (id: string): Promise<PostPreview | nu
   if (!UUID.test(id)) return null;
   const db = admin();
   if (!db) return null;
-  const { data: post, error } = await db.from("posts").select("author_id, body, image_urls").eq("id", id).maybeSingle();
+  const { data: post, error } = await db.from("posts").select("author_id, body, image_urls, video_poster_url").eq("id", id).maybeSingle();
   if (error) {
     console.error(`Aperçu de la publication impossible : ${error.message} (code ${error.code})`);
     return null;
@@ -103,7 +103,8 @@ export const getPostPreview = cache(async (id: string): Promise<PostPreview | nu
   const images = Array.isArray(post.image_urls) ? post.image_urls : [];
   return {
     excerpt: body.length > EXCERPT_MAX ? `${body.slice(0, EXCERPT_MAX - 1).trimEnd()}…` : body,
-    imageUrl: typeof images[0] === "string" ? images[0] : null,
+    // Vidéo : son affiche devient l'image de l'aperçu
+    imageUrl: post.video_poster_url ? String(post.video_poster_url) : typeof images[0] === "string" ? images[0] : null,
     username: String(author.username),
     displayName: author.display_name ? String(author.display_name) : null,
   };

@@ -12,10 +12,11 @@ export const POST_MAX_IMAGES = 4;
 export const COMMENT_BODY_MAX = 300;
 export const FEED_PAGE_SIZE = 10;
 export const POST_BUCKET = "posts";
+export const VIDEO_BUCKET = "videos";
 export const POST_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
 export const POST_IMAGE_MAX_INPUT_BYTES = 20 * 1024 * 1024; // avant compression (le stockage accepte 5 Mo après)
 
-export const POST_COLUMNS = "id, author_id, body, image_urls, sport, event_id, created_at";
+export const POST_COLUMNS = "id, author_id, body, image_urls, video_url, video_poster_url, video_duration_s, sport, event_id, created_at";
 export const COMMENT_COLUMNS = "id, post_id, author_id, body, created_at";
 
 export type PostRow = {
@@ -23,6 +24,10 @@ export type PostRow = {
   author_id: string;
   body: string | null;
   image_urls: string[] | null;
+  // Vidéo (une publication a soit des photos, soit une vidéo) : absent si la requête ne lit pas ces colonnes
+  video_url?: string | null;
+  video_poster_url?: string | null;
+  video_duration_s?: number | null;
   sport: string | null;
   event_id: string | null;
   created_at: string;
@@ -30,8 +35,8 @@ export type PostRow = {
 
 export type CommentRow = { id: string; post_id: string; author_id: string; body: string; created_at: string };
 
-export type PostStats = { likes: number; comments: number; likedByMe: boolean };
-export const EMPTY_STATS: PostStats = { likes: 0, comments: 0, likedByMe: false };
+export type PostStats = { likes: number; comments: number; likedByMe: boolean; views: number };
+export const EMPTY_STATS: PostStats = { likes: 0, comments: 0, likedByMe: false, views: 0 };
 
 // Tout ce qu'il faut pour afficher une page de publications
 export type PostBundle = {
@@ -43,6 +48,7 @@ export type PostBundle = {
 
 export function postErrorKey(error: { message?: string; details?: string | null }): MessageKey {
   const text = `${error.message ?? ""} ${error.details ?? ""}`;
+  if (text.includes("limite_videos")) return "publish.videoLimit";
   if (text.includes("limite_publications")) return "post.errorLimit";
   if (text.includes("limite_commentaires")) return "comment.errorLimit";
   return "post.errorGeneric";
@@ -80,29 +86,17 @@ export async function loadPostDetails(supabase: SupabaseClient, posts: PostRow[]
   const authorIds = [...new Set(posts.map((p) => p.author_id))];
   const eventIds = [...new Set(posts.flatMap((p) => (p.event_id ? [p.event_id] : [])))];
 
-  const [people, statsResult, eventsResult] = await Promise.all([
+  const [people, stats, eventsResult] = await Promise.all([
     loadPeople(supabase, authorIds).catch((err: unknown) => {
       console.error("Lecture des auteurs impossible :", err);
       return [] as Person[];
     }),
-    ids.length > 0 ? supabase.rpc("post_stats", { p_posts: ids }) : Promise.resolve({ data: [], error: null }),
+    loadPostStats(supabase, ids),
     eventIds.length > 0
       ? supabase.from("events").select(EVENT_COLUMNS).in("id", eventIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
 
-  const stats = new Map<string, PostStats>();
-  if (statsResult.error) {
-    console.error(`Lecture des j'aime impossible : ${statsResult.error.message} (code ${statsResult.error.code})`);
-  } else {
-    for (const row of (statsResult.data ?? []) as Record<string, unknown>[]) {
-      stats.set(String(row.post_id), {
-        likes: Number(row.like_count ?? 0),
-        comments: Number(row.comment_count ?? 0),
-        likedByMe: row.liked_by_me === true,
-      });
-    }
-  }
   // Événement non visible pour moi : absent de la liste, donc pas de mini-carte
   const events = new Map<string, EventRow>();
   if (eventsResult.error) {
@@ -111,6 +105,26 @@ export async function loadPostDetails(supabase: SupabaseClient, posts: PostRow[]
     for (const row of (eventsResult.data ?? []) as EventRow[]) events.set(row.id, row);
   }
   return { people: new Map(people.map((p) => [p.id, p])), stats, events };
+}
+
+// Compteurs (j'aime, commentaires, vues) de plusieurs publications en une requête. En cas d'erreur : carte vide.
+export async function loadPostStats(supabase: SupabaseClient, ids: string[]): Promise<Map<string, PostStats>> {
+  const stats = new Map<string, PostStats>();
+  if (ids.length === 0) return stats;
+  const { data, error } = await supabase.rpc("post_stats", { p_posts: ids });
+  if (error) {
+    console.error(`Lecture des j'aime impossible : ${error.message} (code ${error.code})`);
+    return stats;
+  }
+  for (const row of (data ?? []) as Record<string, unknown>[]) {
+    stats.set(String(row.post_id), {
+      likes: Number(row.like_count ?? 0),
+      comments: Number(row.comment_count ?? 0),
+      likedByMe: row.liked_by_me === true,
+      views: Number(row.view_count ?? 0),
+    });
+  }
+  return stats;
 }
 
 // ---------- J'aime ----------
@@ -161,12 +175,28 @@ export async function uploadPostImage(supabase: SupabaseClient, userId: string, 
   return { path, url: supabase.storage.from(POST_BUCKET).getPublicUrl(path).data.publicUrl };
 }
 
-// Adresse publique → chemin dans l'espace « posts » (null si ce n'est pas une photo de publication)
-export function postImagePath(url: string): string | null {
-  const marker = `/object/public/${POST_BUCKET}/`;
+// Adresse publique → chemin dans un espace de stockage (null si l'adresse n'en vient pas)
+export function storagePath(url: string | null | undefined, bucket: string): string | null {
+  if (!url) return null;
+  const marker = `/object/public/${bucket}/`;
   const index = url.indexOf(marker);
   if (index < 0) return null;
   return decodeURIComponent(url.slice(index + marker.length).split("?")[0]);
+}
+
+// Adresse publique → chemin dans l'espace « posts » (null si ce n'est pas une photo de publication)
+export function postImagePath(url: string): string | null {
+  return storagePath(url, POST_BUCKET);
+}
+
+// Vidéo (espace « videos ») et affiche (espace « posts ») ; les erreurs sont seulement notées
+export async function removeVideoFiles(supabase: SupabaseClient, videoPath: string | null, posterPath: string | null): Promise<void> {
+  const [video, poster] = await Promise.all([
+    videoPath ? supabase.storage.from(VIDEO_BUCKET).remove([videoPath]) : Promise.resolve({ error: null }),
+    posterPath ? supabase.storage.from(POST_BUCKET).remove([posterPath]) : Promise.resolve({ error: null }),
+  ]);
+  if (video.error) console.error(`Suppression de la vidéo impossible : ${video.error.message}`);
+  if (poster.error) console.error(`Suppression de l'affiche impossible : ${poster.error.message}`);
 }
 
 export async function removePostImages(supabase: SupabaseClient, paths: string[]): Promise<void> {
@@ -175,7 +205,7 @@ export async function removePostImages(supabase: SupabaseClient, paths: string[]
   if (error) console.error(`Suppression des photos impossible : ${error.message}`);
 }
 
-// Supprime ma publication, puis ses photos. Renvoie true si c'est fait.
+// Supprime ma publication, puis ses photos ou sa vidéo et son affiche. Renvoie true si c'est fait.
 export async function deletePost(supabase: SupabaseClient, post: PostRow): Promise<boolean> {
   const { data, error } = await supabase.from("posts").delete().eq("id", post.id).select("id");
   if (error || !data || data.length === 0) {
@@ -184,6 +214,11 @@ export async function deletePost(supabase: SupabaseClient, post: PostRow): Promi
     );
     return false;
   }
-  await removePostImages(supabase, (post.image_urls ?? []).flatMap((url) => postImagePath(url) ?? []));
+  await Promise.all([
+    removePostImages(supabase, (post.image_urls ?? []).flatMap((url) => postImagePath(url) ?? [])),
+    post.video_url || post.video_poster_url
+      ? removeVideoFiles(supabase, storagePath(post.video_url, VIDEO_BUCKET), storagePath(post.video_poster_url, POST_BUCKET))
+      : Promise.resolve(),
+  ]);
   return true;
 }

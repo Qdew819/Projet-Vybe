@@ -8,6 +8,7 @@ import Avatar from "./Avatar";
 import ConfirmDialog from "./ConfirmDialog";
 import ReportDialog, { type ReportReason } from "./ReportDialog";
 import ShareButton from "./ShareButton";
+import VideoPlayer from "./VideoPlayer";
 import { formatEventDate, type EventRow } from "../lib/events";
 import type { Person } from "../lib/follows";
 import { useLanguage, useT } from "../lib/i18n";
@@ -31,7 +32,7 @@ const iconProps = {
 
 type Confirm = "delete" | "block" | null;
 
-// Publication du fil « Quoi de neuf ? » : auteur, texte, photos, événement lié, j'aime / commentaires / partage, menu « ⋯ ».
+// Publication du fil « Quoi de neuf ? » : auteur, texte, photos ou vidéo, événement lié, j'aime / commentaires / partage, menu « ⋯ ».
 // Les compteurs viennent de post_stats (une requête pour toute la page) ; j'aime est mis à jour tout de suite.
 export default function PostCard({
   post,
@@ -167,7 +168,16 @@ export default function PostCard({
 
       {post.body && <p className="mt-3 whitespace-pre-line break-words text-sm leading-snug">{post.body}</p>}
 
-      {images.length > 0 && <PhotoGrid images={images} onOpen={setViewer} label={t("post.openPhoto")} />}
+      {post.video_url ? (
+        <VideoPlayer
+          postId={post.id}
+          src={post.video_url}
+          poster={post.video_poster_url ?? null}
+          duration={post.video_duration_s ?? null}
+        />
+      ) : (
+        images.length > 0 && <PhotoGrid images={images} onOpen={setViewer} label={t("post.openPhoto")} />
+      )}
 
       {event && <LinkedEvent event={event} />}
 
@@ -217,6 +227,21 @@ export default function PostCard({
           }
           className="flex min-h-11 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold text-muted transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent-ink"
         />
+        {/* Vues (publications avec vidéo) : en bas à droite, visibles par l'auteur et par tout le monde */}
+        {post.video_url && (
+          <span className="ml-auto flex min-h-11 items-center gap-1.5 px-2.5 text-xs font-semibold text-muted">
+            <svg {...iconProps} className="h-4 w-4">
+              <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            <span className="tabular-nums">
+              {((language === "en" ? stats.views === 1 : stats.views < 2) ? t("video.view") : t("video.views")).replace(
+                "{n}",
+                format.format(stats.views)
+              )}
+            </span>
+          </span>
+        )}
       </div>
 
       <PostMenu

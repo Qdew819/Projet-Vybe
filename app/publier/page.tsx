@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Avatar from "../../components/Avatar";
 import { EVENT_COLUMNS, fetchMyStatuses, formatEventDate, type EventRow } from "../../lib/events";
 import { loadPeople, type Person } from "../../lib/follows";
-import { useLanguage, useT } from "../../lib/i18n";
+import { useLanguage, useT, type MessageKey } from "../../lib/i18n";
 import {
   POST_BODY_MAX,
   POST_IMAGE_ACCEPT,
@@ -16,13 +16,34 @@ import {
   isAcceptedPostImage,
   postErrorKey,
   removePostImages,
+  removeVideoFiles,
   uploadPostImage,
 } from "../../lib/posts";
 import { initialsOf } from "../../lib/profile";
 import { createClient } from "../../lib/supabase/client";
 import { loadMySports, useSportsCatalog, type CatalogSport } from "../../lib/userSports";
+import {
+  VIDEO_ACCEPT,
+  VIDEO_MAX_BYTES,
+  VIDEO_MAX_SECONDS,
+  formatDuration,
+  readVideo,
+  uploadPoster,
+  uploadVideo,
+  videoContentType,
+} from "../../lib/videos";
 
 type Photo = { id: string; blob: Blob; preview: string };
+type Video = { file: File; preview: string; duration: number; poster: Blob | null; posterPreview: string | null };
+
+// Boutons « Ajouter une photo » / « Ajouter une vidéo » (désactivés : estompés, sans survol)
+const pickerButton =
+  "flex min-h-12 flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-accent-ink/50 px-2 text-sm font-bold text-accent-ink transition-colors hover:border-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-accent-ink/50";
+
+function revokeVideo(video: Video) {
+  URL.revokeObjectURL(video.preview);
+  if (video.posterPreview) URL.revokeObjectURL(video.posterPreview);
+}
 
 const iconProps = {
   "aria-hidden": true,
@@ -33,7 +54,7 @@ const iconProps = {
   strokeLinejoin: "round" as const,
 };
 
-// Nouvelle publication (plein écran) : texte, jusqu'à 4 photos, sport et événement facultatifs
+// Nouvelle publication (plein écran) : texte, jusqu'à 4 photos OU une vidéo de 30 s, sport et événement facultatifs
 export default function Publier() {
   const router = useRouter();
   const t = useT();
@@ -49,6 +70,13 @@ export default function Publier() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [preparing, setPreparing] = useState(0);
   const [photoError, setPhotoError] = useState("");
+  const [video, setVideo] = useState<Video | null>(null);
+  const [videoPreparing, setVideoPreparing] = useState(false);
+  const [videoError, setVideoError] = useState("");
+  const [progress, setProgress] = useState<number | null>(null); // envoi de la vidéo, de 0 à 1
+  const videoRef = useRef<Video | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const [sport, setSport] = useState<string | null>(null);
   const [eventId, setEventId] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -102,6 +130,27 @@ export default function Publier() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Aperçus de la vidéo libérés au démontage (une vidéo retirée est libérée dans removeVideo)
+  useEffect(() => {
+    videoRef.current = video;
+  }, [video]);
+  useEffect(() => {
+    return () => {
+      if (videoRef.current) revokeVideo(videoRef.current);
+    };
+  }, []);
+
+  // Envoi en cours : le navigateur demande une confirmation avant de quitter la page
+  useEffect(() => {
+    if (!publishing) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = t("publish.leaveWarning");
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [publishing, t]);
+
   // Sports : les miens d'abord, puis tous les autres
   const sports = useMemo(() => {
     const catalog = catalogState.status === "ready" ? catalogState.sports : [];
@@ -109,7 +158,8 @@ export default function Publier() {
     return [...mine, ...catalog.filter((s) => !mySportIds.includes(s.id))];
   }, [catalogState, mySportIds]);
 
-  const empty = body.trim().length === 0 && photos.length === 0;
+  const empty = body.trim().length === 0 && photos.length === 0 && !video;
+  const busy = publishing || preparing > 0 || videoPreparing;
 
   async function addPhotos(files: FileList | null) {
     if (!files) return;
@@ -136,16 +186,61 @@ export default function Publier() {
     }
   }
 
+  // Une seule vidéo : type, 50 Mo, lisible par le navigateur, 30 secondes ; l'affiche est capturée à ~0,5 s
+  async function addVideo(file: File | undefined) {
+    if (!file) return;
+    setVideoError("");
+    if (!videoContentType(file)) {
+      setVideoError(t("publish.videoType"));
+      return;
+    }
+    if (file.size > VIDEO_MAX_BYTES) {
+      setVideoError(t("publish.videoTooBig"));
+      return;
+    }
+    setVideoPreparing(true);
+    try {
+      const info = await readVideo(file);
+      // Petite marge : un clip de « 30 s » filmé au téléphone dure souvent 30,0x s
+      if (info.duration >= VIDEO_MAX_SECONDS + 0.5) {
+        setVideoError(t("publish.videoTooLong"));
+      } else {
+        setVideo({
+          file,
+          preview: URL.createObjectURL(file),
+          duration: info.duration,
+          poster: info.poster,
+          posterPreview: info.poster ? URL.createObjectURL(info.poster) : null,
+        });
+      }
+    } catch (err) {
+      console.error("Lecture de la vidéo impossible :", err);
+      setVideoError(t("publish.videoUnreadable"));
+    }
+    setVideoPreparing(false);
+  }
+
+  function removeVideo() {
+    if (video) revokeVideo(video);
+    setVideo(null);
+    setVideoError("");
+  }
+
   function removePhoto(photo: Photo) {
     URL.revokeObjectURL(photo.preview);
     setPhotos((current) => current.filter((p) => p.id !== photo.id));
   }
 
   async function publish() {
-    if (!me || empty || publishing || preparing > 0) return;
+    if (!me || empty || busy) return;
     setPublishing(true);
     setError("");
     const supabase = createClient();
+
+    if (video) {
+      await publishVideo(supabase, me.id, video);
+      return;
+    }
 
     // 1. Photos
     const uploaded: { path: string; url: string }[] = [];
@@ -173,6 +268,47 @@ export default function Publier() {
       await removePostImages(supabase, uploaded.map((u) => u.path));
       setError(t(postErrorKey(insertError)));
       setPublishing(false);
+      return;
+    }
+    router.push("/accueil?publie=1");
+  }
+
+  // Vidéo (bucket « videos ») puis affiche (bucket « posts »), puis la publication.
+  // Si quelque chose échoue, les fichiers déjà envoyés sont supprimés.
+  async function publishVideo(supabase: ReturnType<typeof createClient>, userId: string, chosen: Video) {
+    const id = crypto.randomUUID();
+    let videoFile: { path: string; url: string } | null = null;
+    let posterFile: { path: string; url: string } | null = null;
+    const fail = async (key: MessageKey) => {
+      await removeVideoFiles(supabase, videoFile?.path ?? null, posterFile?.path ?? null);
+      setError(t(key));
+      setProgress(null);
+      setPublishing(false);
+    };
+
+    setProgress(0);
+    try {
+      videoFile = await uploadVideo(supabase, userId, id, chosen.file, setProgress);
+      if (chosen.poster) posterFile = await uploadPoster(supabase, userId, id, chosen.poster);
+    } catch (err) {
+      console.error("Envoi de la vidéo impossible :", err);
+      await fail("post.errorGeneric");
+      return;
+    }
+
+    const { error: insertError } = await supabase.from("posts").insert({
+      author_id: userId,
+      body: body.trim(),
+      image_urls: [],
+      video_url: videoFile.url,
+      video_poster_url: posterFile?.url ?? null,
+      video_duration_s: Math.min(VIDEO_MAX_SECONDS, Math.max(1, Math.round(chosen.duration))),
+      sport,
+      event_id: eventId,
+    });
+    if (insertError) {
+      console.error(`Publication impossible : ${insertError.message} (code ${insertError.code})`);
+      await fail(postErrorKey(insertError));
       return;
     }
     router.push("/accueil?publie=1");
@@ -208,7 +344,7 @@ export default function Publier() {
           <button
             type="button"
             onClick={publish}
-            disabled={empty || publishing || preparing > 0}
+            disabled={empty || busy}
             aria-busy={publishing}
             className="min-h-11 rounded-full bg-accent px-5 text-sm font-bold text-on-accent transition-opacity disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
           >
@@ -268,36 +404,116 @@ export default function Publier() {
               ))}
             </ul>
           )}
-          {photos.length < POST_MAX_IMAGES && (
-            <label
-              className={`flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-accent-ink/50 text-sm font-bold text-accent-ink transition-colors hover:border-accent-ink focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent-ink ${
-                publishing ? "pointer-events-none opacity-60" : ""
-              }`}
-            >
-              <input
-                type="file"
-                accept={POST_IMAGE_ACCEPT}
-                multiple
-                disabled={publishing}
-                onChange={(e) => {
-                  void addPhotos(e.target.files);
-                  e.target.value = "";
-                }}
-                className="sr-only"
+          {video && (
+            <div className="relative mb-3 overflow-hidden rounded-xl bg-black">
+              <video
+                src={video.preview}
+                poster={video.posterPreview ?? undefined}
+                controls
+                muted
+                playsInline
+                aria-label={t("publish.videoPreview")}
+                className="mx-auto block max-h-[60vh] w-full object-contain"
               />
-              <svg {...iconProps} className="h-5 w-5" strokeWidth={2}>
-                <rect x="3" y="5" width="18" height="14" rx="2" />
-                <circle cx="9" cy="10" r="1.8" />
-                <path d="M21 16l-5-5-8 8" />
-              </svg>
-              {preparing > 0 ? t("eventForm.photoPreparing") : t("eventForm.addPhoto")}
-              <span className="font-semibold text-muted">
-                ({photos.length}/{POST_MAX_IMAGES})
+              <button
+                type="button"
+                onClick={removeVideo}
+                disabled={publishing}
+                aria-label={t("publish.removeVideo")}
+                className="absolute right-1.5 top-1.5 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-white"
+              >
+                <svg {...iconProps} className="h-5 w-5" strokeWidth={2.5}>
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+              <span className="pointer-events-none absolute left-2 top-3 rounded-md bg-black/75 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white">
+                {formatDuration(video.duration)}
               </span>
-            </label>
+            </div>
           )}
+
+          {/* Barre de progression de l'envoi de la vidéo */}
+          {progress !== null && (
+            <div className="mb-3">
+              <div
+                role="progressbar"
+                aria-label={t("publish.uploadLabel")}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(progress * 100)}
+                className="h-2 overflow-hidden rounded-full bg-line"
+              >
+                <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${Math.round(progress * 100)}%` }} />
+              </div>
+              <p className="mt-1 text-xs font-semibold text-muted">{t("publish.uploading").replace("{n}", String(Math.round(progress * 100)))}</p>
+            </div>
+          )}
+
+          {/* Photos et vidéo sont exclusives : choisir l'une désactive l'autre */}
+          {/* Champs de fichier cachés, ouverts par les boutons ci-dessous (plus fiable qu'un <label> sur mobile) */}
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept={POST_IMAGE_ACCEPT}
+            multiple
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(e) => {
+              void addPhotos(e.target.files);
+              e.target.value = "";
+            }}
+            className="hidden"
+          />
+          <input
+            ref={videoInputRef}
+            type="file"
+            accept={VIDEO_ACCEPT}
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(e) => {
+              void addVideo(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+            className="hidden"
+          />
+          <div className="flex gap-2">
+            {photos.length < POST_MAX_IMAGES && (
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={publishing || video !== null || videoPreparing}
+                className={pickerButton}
+              >
+                <svg {...iconProps} className="h-5 w-5 shrink-0" strokeWidth={2}>
+                  <rect x="3" y="5" width="18" height="14" rx="2" />
+                  <circle cx="9" cy="10" r="1.8" />
+                  <path d="M21 16l-5-5-8 8" />
+                </svg>
+                {preparing > 0 ? t("eventForm.photoPreparing") : t("eventForm.addPhoto")}
+                <span className="font-semibold text-muted">
+                  ({photos.length}/{POST_MAX_IMAGES})
+                </span>
+              </button>
+            )}
+            {!video && (
+              <button
+                type="button"
+                onClick={() => videoInputRef.current?.click()}
+                disabled={publishing || photos.length > 0 || preparing > 0 || videoPreparing}
+                className={pickerButton}
+              >
+                <svg {...iconProps} className="h-5 w-5 shrink-0" strokeWidth={2}>
+                  <rect x="3" y="6" width="13" height="12" rx="2" />
+                  <path d="M16 10.5l5-3v9l-5-3z" />
+                </svg>
+                {videoPreparing ? t("publish.videoPreparing") : t("publish.addVideo")}
+              </button>
+            )}
+          </div>
+          {video && <p className="mt-1.5 text-xs text-muted">{t("publish.photosLocked")}</p>}
+          {photos.length > 0 && <p className="mt-1.5 text-xs text-muted">{t("publish.videoLocked")}</p>}
           <p aria-live="polite" className="mt-1.5 text-xs text-danger">
-            {photoError}
+            {photoError || videoError}
           </p>
         </section>
 

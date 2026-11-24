@@ -9,8 +9,7 @@ import Avatar from "../../components/Avatar";
 import NotificationBell from "../../components/NotificationBell";
 import HomeEvents from "../../components/home/HomeEvents";
 import PostFeed from "../../components/home/PostFeed";
-import VideoCard from "../../components/home/VideoCard";
-import { SHOW_HOME_PREVIEW, previewVideos } from "../../lib/home-preview";
+import PopularVideos from "../../components/home/PopularVideos";
 import { useT } from "../../lib/i18n";
 import { isLanguage, setLanguage } from "../../lib/language";
 import { initialsOf } from "../../lib/profile";
@@ -151,9 +150,6 @@ export default function Accueil() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(""), 3000);
   }, []);
-
-  // Boutons d'exemple (vidéos) : rien ne se passe, on annonce « Bientôt »
-  const soon = useCallback(() => announce(t("common.soon")), [announce, t]);
 
   // Retour du formulaire de publication (?publie=1) : « Publié ! », puis on nettoie l'adresse.
   // Le fil est relu à l'arrivée sur l'accueil : la nouvelle publication est en haut.
@@ -353,8 +349,10 @@ export default function Accueil() {
 
       <PostFeed me={userId} sport={sportFilter?.slug ?? null} onMessage={announce} />
 
-      {SHOW_HOME_PREVIEW && (
-        <>
+      {/* Vraies vidéos populaires (filtrées par le cercle de sport choisi) ; section masquée s'il n'y en a aucune */}
+      <PopularVideos
+        sport={sportFilter?.slug ?? null}
+        wrap={(content) => (
           <Section
             id="videos-populaires"
             title={t("home.popularVideos")}
@@ -364,18 +362,12 @@ export default function Accueil() {
               </svg>
             }
           >
-            <ul className="flex w-max gap-3 px-4">
-              {previewVideos.map((video) => (
-                <li key={video.id}>
-                  <VideoCard title={video.title} media={video.media} duration={video.duration} onPlay={soon} inactive />
-                </li>
-              ))}
-            </ul>
+            {content}
           </Section>
-        </>
-      )}
+        )}
+      />
 
-      {/* Annonce « Bientôt » : lue par les lecteurs d'écran et affichée au-dessus de la barre du bas */}
+      {/* Messages brefs : lus par les lecteurs d'écran et affichée au-dessus de la barre du bas */}
       <div
         aria-live="polite"
         className="pointer-events-none fixed inset-x-0 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-30 flex justify-center px-4"
