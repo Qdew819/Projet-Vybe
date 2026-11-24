@@ -46,6 +46,22 @@ const SPORT_IMAGES: Record<string, string> = {
   lacrosse: "/sports/lacrosse.jpg",
   crosse: "/sports/lacrosse.jpg",
   handball: "/sports/handball.jpg",
+  ultimate: "/sports/ultimate.jpg",
+  "ultimate-frisbee": "/sports/ultimate.jpg",
+  boxing: "/sports/boxing.jpg",
+  boxe: "/sports/boxing.jpg",
+  // Arts martiaux : la même photo (prise en kimono) pour le nom générique et les sports de préhension en kimono
+  "arts-martiaux": "/sports/martial-arts.jpg",
+  "martial-arts": "/sports/martial-arts.jpg",
+  judo: "/sports/martial-arts.jpg",
+  bjj: "/sports/martial-arts.jpg",
+  "jiu-jitsu-bresilien": "/sports/martial-arts.jpg",
+  jujitsu: "/sports/martial-arts.jpg",
+  "ju-jitsu": "/sports/martial-arts.jpg",
+  wrestling: "/sports/wrestling.jpg",
+  lutte: "/sports/wrestling.jpg",
+  climbing: "/sports/climbing.jpg",
+  escalade: "/sports/climbing.jpg",
 };
 
 function toKey(value: string): string {
