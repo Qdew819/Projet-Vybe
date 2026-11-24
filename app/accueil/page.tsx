@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "../../components/AppShell";
 import Avatar from "../../components/Avatar";
+import NotificationBell from "../../components/NotificationBell";
 import HomeEvents from "../../components/home/HomeEvents";
 import PostFeed from "../../components/home/PostFeed";
 import VideoCard from "../../components/home/VideoCard";
@@ -64,7 +65,6 @@ export default function Accueil() {
   const [myName, setMyName] = useState("");
   // Cercle de sport choisi : filtre le fil de publications (slug du sport)
   const [sportFilter, setSportFilter] = useState<UserSport["sport"] | null>(null);
-  const [pendingRequests, setPendingRequests] = useState(0);
   const [sports, setSports] = useState<UserSport[]>([]);
   const [showCityBanner, setShowCityBanner] = useState(false);
   // L'image du logo n'a pas pu être chargée : on affiche « VYBE » en texte à la place
@@ -115,13 +115,7 @@ export default function Accueil() {
       setMyName(String(profile?.display_name || profile?.username || ""));
 
       // Lus en parallèle : si l'un échoue, le reste de l'accueil s'affiche quand même
-      const [pendingResult, locationResult, sportsResult] = await Promise.all([
-        // Demandes d'abonnement en attente : seulement le nombre, pour la pastille de la cloche
-        supabase
-          .from("follows")
-          .select("follower_id", { count: "exact", head: true })
-          .eq("followed_id", uid)
-          .eq("status", "pending"),
+      const [locationResult, sportsResult] = await Promise.all([
         supabase.from("user_locations").select("user_id").eq("user_id", uid).maybeSingle(),
         Promise.all([loadMySports(supabase, uid), fetchCatalog(supabase)]).then(
           ([choices, catalog]) => ({ data: withDetails(choices, catalog), error: null }),
@@ -129,11 +123,6 @@ export default function Accueil() {
         ),
       ]);
 
-      if (pendingResult.error) {
-        console.error(`Lecture des demandes d'abonnement impossible : ${pendingResult.error.message} (code ${pendingResult.error.code})`);
-      } else {
-        setPendingRequests(pendingResult.count ?? 0);
-      }
       // Pas encore de ville : bannière (rien n'est affiché si la lecture échoue)
       if (locationResult.error) {
         console.error(`Lecture de la ville impossible : ${locationResult.error.message} (code ${locationResult.error.code})`);
@@ -190,11 +179,6 @@ export default function Accueil() {
     );
   }
 
-  const bellLabel =
-    pendingRequests > 0
-      ? `${t("home.notifications")} (${t("home.pendingBadge").replace("{n}", String(pendingRequests))})`
-      : t("home.notifications");
-
   return (
     <AppShell active="accueil">
       <h1 className="sr-only">{t("home.title")}</h1>
@@ -229,20 +213,8 @@ export default function Accueil() {
               <path d="M20 20l-3.5-3.5" />
             </svg>
           </HeaderIcon>
-          <HeaderIcon href="/personnes" label={bellLabel}>
-            <svg {...iconProps} viewBox="0 0 24 24" className="h-6 w-6" strokeWidth={2.2}>
-              <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-              <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-            </svg>
-            {pendingRequests > 0 && (
-              <span
-                aria-hidden="true"
-                className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-background bg-accent px-1 text-[10px] font-black leading-none text-on-accent"
-              >
-                {pendingRequests > 9 ? "9+" : pendingRequests}
-              </span>
-            )}
-          </HeaderIcon>
+          {/* Vraies notifications non lues, en temps réel (components/NotificationBell.tsx) */}
+          <NotificationBell userId={userId} className={headerIconClass} />
         </div>
       </header>
 
@@ -417,13 +389,16 @@ export default function Accueil() {
 }
 
 // Icône blanche simple comme la maquette (l'en-tête reste noir dans les deux thèmes), zone tactile de 44 px
+const headerIconClass =
+  "relative flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors hover:text-accent light:text-foreground light:hover:text-accent-ink focus-visible:outline-2 focus-visible:outline-accent";
+
 function HeaderIcon({ href, label, children }: { href: string; label: string; children: ReactNode }) {
   return (
     <Link
       href={href}
       aria-label={label}
       title={label}
-      className="relative flex h-11 w-11 items-center justify-center rounded-full text-white transition-colors hover:text-accent light:text-foreground light:hover:text-accent-ink focus-visible:outline-2 focus-visible:outline-accent"
+      className={headerIconClass}
     >
       {children}
     </Link>
