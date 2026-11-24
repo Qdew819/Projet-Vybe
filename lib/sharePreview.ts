@@ -1,11 +1,14 @@
 import { cache } from "react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { connection } from "next/server";
 
 // Aperçus publics des liens partagés (/e, /p, /u) : lus côté serveur avec la clé administrateur (service role),
 // qui ignore les règles d'accès. On n'en renvoie donc QUE le strict nécessaire, et seulement pour du contenu public :
 // - événement : public et non annulé ; jamais l'adresse exacte ni les participants
 // - publication : auteur au compte public ; début du texte, première photo, pseudo
 // - profil : compte public ; pseudo, nom, photo, bio
+// Toujours lus à la demande (await connection()), jamais mis en cache : un compte qui passe en privé ou un événement
+// qui devient « abonnés seulement » perd son aperçu tout de suite.
 // Ce fichier ne doit être importé que par du code serveur (pages, generateMetadata, opengraph-image) :
 // la clé SUPABASE_SERVICE_ROLE_KEY n'existe pas dans le navigateur.
 
@@ -51,6 +54,7 @@ async function sportOf(db: SupabaseClient, slug: string): Promise<{ name: string
 
 // cache() : une seule lecture par requête, partagée entre la page et generateMetadata
 export const getEventPreview = cache(async (id: string): Promise<EventPreview | null> => {
+  await connection();
   if (!UUID.test(id)) return null;
   const db = admin();
   if (!db) return null;
@@ -78,6 +82,7 @@ export const getEventPreview = cache(async (id: string): Promise<EventPreview | 
 });
 
 export const getPostPreview = cache(async (id: string): Promise<PostPreview | null> => {
+  await connection();
   if (!UUID.test(id)) return null;
   const db = admin();
   if (!db) return null;
@@ -105,6 +110,7 @@ export const getPostPreview = cache(async (id: string): Promise<PostPreview | nu
 });
 
 export const getProfilePreview = cache(async (username: string): Promise<ProfilePreview | null> => {
+  await connection();
   const clean = username.trim().toLowerCase();
   if (!USERNAME.test(clean)) return null;
   const db = admin();

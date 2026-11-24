@@ -15,6 +15,7 @@ export default function FollowButton({
   onPending,
   onAccepted,
   followBack = false,
+  privateAccount = false,
   size = "large",
 }: {
   status: FollowStatus;
@@ -24,6 +25,7 @@ export default function FollowButton({
   onPending: () => void; // clic sur « Demande envoyée » (proposer d'annuler)
   onAccepted: () => void; // clic sur « Abonné » (proposer de se désabonner)
   followBack?: boolean; // « Suivre en retour » au lieu de « Suivre »
+  privateAccount?: boolean; // compte privé : « Demander à suivre » (facultatif, utilisé par la recherche)
   size?: "large" | "small";
 }) {
   const t = useT();
@@ -61,7 +63,7 @@ export default function FollowButton({
       </button>
     );
   }
-  const label = followBack ? t("follow.followBack") : t("publicProfile.follow");
+  const label = privateAccount ? t("search.requestFollow") : followBack ? t("follow.followBack") : t("publicProfile.follow");
   return (
     <button
       type="button"

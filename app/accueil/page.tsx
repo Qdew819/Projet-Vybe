@@ -207,7 +207,7 @@ export default function Accueil() {
         )}
 
         <div className="absolute right-2 top-[40%] z-10 flex -translate-y-1/2 items-center drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)] light:drop-shadow-none">
-          <HeaderIcon href="/personnes" label={t("home.search")}>
+          <HeaderIcon href="/recherche" label={t("home.search")}>
             <svg {...iconProps} viewBox="0 0 24 24" className="h-6 w-6" strokeWidth={2.2}>
               <circle cx="11" cy="11" r="7" />
               <path d="M20 20l-3.5-3.5" />

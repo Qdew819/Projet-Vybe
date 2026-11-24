@@ -5,6 +5,7 @@ import { getProfilePreview } from "../../../lib/sharePreview";
 
 // Aperçu des liens de profil partagés (/u/<pseudo>) : seulement pour un compte public (pseudo, nom, bio),
 // sinon métadonnées génériques. La page elle-même reste réservée aux personnes connectées.
+// Lu à chaque requête (connection() dans getProfilePreview) : un compte passé en privé n'a plus d'aperçu.
 export async function generateMetadata({ params }: { params: Promise<{ username: string }> }): Promise<Metadata> {
   const { username } = await params;
   const profile = await getProfilePreview(decodeURIComponent(username));
@@ -16,6 +17,7 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
   });
 }
 
+// La page (page.tsx) est dynamique elle aussi : c'est ce que Next 16 exige quand les métadonnées le sont.
 export default function ProfileLayout({ children }: { children: ReactNode }) {
   return children;
 }
