@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useCloseDialogOnHide } from "../lib/useCloseDialogOnHide";
 import { createPortal } from "react-dom";
 import { useT, type MessageKey } from "../lib/i18n";
 import { useMounted } from "../lib/useMounted";
@@ -23,6 +24,7 @@ export default function SportEditDialog({
   const t = useT();
   const mounted = useMounted();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  useCloseDialogOnHide(dialogRef);
   const [level, setLevel] = useState<SportLevel>(sport.level);
   const [busy, setBusy] = useState<"save" | "remove" | null>(null);
   const [error, setError] = useState<MessageKey | null>(null);

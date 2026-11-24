@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCloseDialogOnHide } from "../../lib/useCloseDialogOnHide";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Avatar from "../../components/Avatar";
@@ -485,6 +486,7 @@ function NotificationMenu({
   const t = useT();
   const mounted = useMounted();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  useCloseDialogOnHide(dialogRef);
   const firstRef = useRef<HTMLButtonElement>(null);
   // Garde la notification visée pendant la fermeture
   const target = useRef<NotificationItem | null>(null);

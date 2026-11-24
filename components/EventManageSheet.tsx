@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useCloseDialogOnHide } from "../lib/useCloseDialogOnHide";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useT } from "../lib/i18n";
@@ -23,6 +24,7 @@ export default function EventManageSheet({
   const t = useT();
   const mounted = useMounted();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  useCloseDialogOnHide(dialogRef);
   const firstRef = useRef<HTMLAnchorElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const open = eventId !== null;

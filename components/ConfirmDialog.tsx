@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useCloseDialogOnHide } from "../lib/useCloseDialogOnHide";
 import { createPortal } from "react-dom";
 import { useT } from "../lib/i18n";
 import { useMounted } from "../lib/useMounted";
@@ -33,6 +34,7 @@ export default function ConfirmDialog({
   const t = useT();
   const mounted = useMounted();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  useCloseDialogOnHide(dialogRef);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {

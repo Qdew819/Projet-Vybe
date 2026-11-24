@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCloseDialogOnHide } from "../lib/useCloseDialogOnHide";
 import { createPortal } from "react-dom";
 import { useT } from "../lib/i18n";
 import { absoluteUrl } from "../lib/share";
@@ -143,6 +144,7 @@ function ShareSheet({
 }) {
   const t = useT();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  useCloseDialogOnHide(dialogRef);
   const firstRef = useRef<HTMLButtonElement>(null);
   const fieldRef = useRef<HTMLInputElement>(null);
   const [copyFailed, setCopyFailed] = useState(false);

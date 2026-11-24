@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useCloseDialogOnHide } from "../lib/useCloseDialogOnHide";
 import Image from "next/image";
 import Avatar from "./Avatar";
 import CameraCapture from "./CameraCapture";
@@ -32,6 +33,7 @@ export default function AvatarPicker({
 }) {
   const t = useT();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  useCloseDialogOnHide(dialogRef);
   const libraryRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<View>("menu");

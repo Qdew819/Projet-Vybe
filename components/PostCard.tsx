@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCloseDialogOnHide } from "../lib/useCloseDialogOnHide";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
@@ -348,6 +349,7 @@ function PhotoViewer({ images, index, onChange }: { images: string[]; index: num
   const t = useT();
   const mounted = useMounted();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  useCloseDialogOnHide(dialogRef);
   const open = index !== null;
 
   useEffect(() => {
@@ -497,6 +499,7 @@ function PostMenu({
   const t = useT();
   const mounted = useMounted();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  useCloseDialogOnHide(dialogRef);
   const firstRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCloseDialogOnHide } from "../../../lib/useCloseDialogOnHide";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import BirthDateField from "../../../components/BirthDateField";
@@ -110,6 +111,7 @@ export default function CompteEtSecurite() {
 
   // Suppression du compte
   const dialogRef = useRef<HTMLDialogElement>(null);
+  useCloseDialogOnHide(dialogRef);
   const [confirmText, setConfirmText] = useState("");
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
