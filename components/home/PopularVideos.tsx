@@ -72,7 +72,7 @@ export default function PopularVideos({ sport, wrap }: { sport: string | null; w
             <VideoCard
               href={`/publication/${post.id}`}
               poster={post.video_poster_url ?? null}
-              caption={(post.body ?? "").replace(/\s+/g, " ").trim()}
+              caption={post.body ?? ""}
               author={author}
               duration={formatDuration(post.video_duration_s)}
             />

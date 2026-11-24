@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import Avatar from "../../../components/Avatar";
 import ConfirmDialog from "../../../components/ConfirmDialog";
+import ExpandableText from "../../../components/ExpandableText";
 import PostCard from "../../../components/PostCard";
 import { PostSkeleton } from "../../../components/home/PostFeed";
 import type { EventRow } from "../../../lib/events";
@@ -229,6 +230,7 @@ function Publication() {
           onDeleted={() => router.push("/accueil")}
           onBlocked={() => router.push("/accueil")}
           commentsLink={false}
+          fullText
         />
 
         <section aria-labelledby="titre-commentaires" className="mt-6">
@@ -258,7 +260,7 @@ function Publication() {
                         {relativeTime(comment.created_at, language, new Date(loadedAt))}
                       </time>
                     </p>
-                    <p className="mt-0.5 whitespace-pre-line break-words text-sm">{comment.body}</p>
+                    <ExpandableText text={comment.body} backdrop="background" className="mt-0.5 text-sm" />
                   </div>
                   {canDelete && (
                     <button

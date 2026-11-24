@@ -4,7 +4,7 @@ import { useT } from "../../lib/i18n";
 import { DurationBadge, PlayIcon } from "./MediaThumb";
 
 // Vignette verticale de la rangée « Vidéos populaires » : affiche, petit bouton de lecture, durée, début de la légende
-// sur 2 lignes et @pseudo de l'auteur. Ouvre la publication.
+// sur 2 lignes (sans sauts de ligne, sans « Montrer plus ») et @pseudo de l'auteur en gris. Ouvre la publication.
 export default function VideoCard({
   href,
   poster,
@@ -14,12 +14,13 @@ export default function VideoCard({
 }: {
   href: string;
   poster: string | null;
-  caption: string;
+  caption: string; // texte de la publication ; les retours à la ligne deviennent des espaces
   author: string; // « @pseudo » (ou le nom si pas de pseudo)
   duration: string;
 }) {
   const t = useT();
-  const title = caption || t("home.videoBy").replace("{name}", author);
+  const preview = caption.replace(/\s+/g, " ").trim();
+  const title = preview || t("home.videoBy").replace("{name}", author);
   return (
     <Link
       href={href}
@@ -44,12 +45,11 @@ export default function VideoCard({
         </span>
         <DurationBadge duration={duration} />
       </span>
-      {caption && (
-        <span aria-hidden="true" className="mt-1.5 line-clamp-2 block text-xs font-semibold leading-tight">
-          {caption}
-        </span>
-      )}
-      <span aria-hidden="true" className="mt-0.5 block truncate text-[11px] text-muted">
+      {/* Début de la légende : 2 lignes au plus (hauteur fixe, pour que toutes les cartes aient la même taille) */}
+      <span aria-hidden="true" className="mt-1.5 line-clamp-2 block h-[2.5em] break-words text-xs font-semibold leading-tight text-foreground">
+        {preview}
+      </span>
+      <span aria-hidden="true" className="mt-0.5 block truncate whitespace-nowrap text-[11px] text-muted">
         {author}
       </span>
     </Link>

@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import Avatar from "./Avatar";
 import ConfirmDialog from "./ConfirmDialog";
+import ExpandableText from "./ExpandableText";
 import ReportDialog, { type ReportReason } from "./ReportDialog";
 import ShareButton from "./ShareButton";
 import VideoPlayer from "./VideoPlayer";
@@ -45,6 +46,7 @@ export default function PostCard({
   onDeleted,
   onBlocked,
   commentsLink = true,
+  fullText = false,
 }: {
   post: PostRow;
   author?: Person;
@@ -56,6 +58,7 @@ export default function PostCard({
   onDeleted: (post: PostRow) => void;
   onBlocked: (authorId: string) => void;
   commentsLink?: boolean; // false sur la page de la publication (on y est déjà)
+  fullText?: boolean; // true : texte complet (vue détaillée) ; sinon coupé à 3 lignes avec « Montrer plus »
 }) {
   const t = useT();
   const language = useLanguage();
@@ -166,7 +169,12 @@ export default function PostCard({
         </button>
       </header>
 
-      {post.body && <p className="mt-3 whitespace-pre-line break-words text-sm leading-snug">{post.body}</p>}
+      {post.body &&
+        (fullText ? (
+          <p className="mt-3 whitespace-pre-line break-words text-sm leading-snug">{post.body}</p>
+        ) : (
+          <ExpandableText text={post.body} className="mt-3 text-sm leading-snug" />
+        ))}
 
       {post.video_url ? (
         <VideoPlayer
