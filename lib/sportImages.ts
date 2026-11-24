@@ -19,6 +19,8 @@ const SPORT_IMAGES: Record<string, string> = {
   baseball: "/sports/baseball.jpg",
   football: "/sports/football.jpg",
   badminton: "/sports/badminton.jpg",
+  "floor-hockey": "/sports/floor-hockey.jpg",
+  "hockey-cosom": "/sports/floor-hockey.jpg",
 };
 
 function toKey(value: string): string {

@@ -386,23 +386,21 @@ export default function Parametres() {
               <ProfileStats posts={0} followers={followCounts.followers} following={followCounts.following} />
             </div>
 
-            {/* Masquée s'il n'y a aucun sport (la ligne « Sports et niveaux » plus bas permet d'en ajouter) */}
-            {sports.length > 0 && (
-              <div className="mt-5">
-                <SportsTabs
-                  sports={sports}
-                  activeId={activeSport}
-                  opensDialog
-                  onSelect={(id) => {
-                    clearMessages();
-                    setSportMessage("");
-                    setActiveSport(id);
-                    setEditingSport(id);
-                  }}
-                  editHref="/parametres/sports"
-                />
-              </div>
-            )}
+            {/* Toujours affichée ici : sans aucun sport, il reste le bouton « + Autres » pour en ajouter */}
+            <div className="mt-5">
+              <SportsTabs
+                sports={sports}
+                activeId={activeSport}
+                opensDialog
+                onSelect={(id) => {
+                  clearMessages();
+                  setSportMessage("");
+                  setActiveSport(id);
+                  setEditingSport(id);
+                }}
+                editHref="/parametres/sports"
+              />
+            </div>
             <p aria-live="polite" className={`text-sm font-semibold text-accent-ink ${sportMessage ? "mt-2" : "sr-only"}`}>
               {sportMessage}
             </p>

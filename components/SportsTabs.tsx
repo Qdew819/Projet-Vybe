@@ -6,7 +6,7 @@ import { LEVEL_LABEL, LEVEL_LOWER, type UserSport } from "../lib/userSports";
 
 // Onglets des sports du profil (comme sur la maquette) : le sport actif est en vert plein, avec le niveau en petit.
 // « + Autres » à la fin (seulement sur mon profil) mène à la page « Sports et niveaux ».
-// Rien n'est affiché s'il n'y a aucun sport.
+// S'il n'y a aucun sport : rien, sauf « + Autres » quand editHref est fourni (réglages).
 export default function SportsTabs({
   sports,
   activeId,
@@ -21,10 +21,24 @@ export default function SportsTabs({
   opensDialog?: boolean; // la pastille ouvre une fenêtre (mon profil : niveau ou retrait)
 }) {
   const t = useT();
-  if (sports.length === 0) return null;
 
   const pill =
     "flex shrink-0 items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink";
+
+  if (sports.length === 0) {
+    // Aucun sport : rien sur un profil en lecture ; sur mon profil (editHref), seulement « + Autres » pour en ajouter
+    if (!editHref) return null;
+    return (
+      <div className="py-1">
+        <Link href={editHref} className={`${pill} w-max border-line bg-surface text-foreground hover:border-accent-ink`}>
+          <span aria-hidden="true" className="text-base leading-none text-accent-ink">
+            +
+          </span>
+          {t("sports.others")}
+        </Link>
+      </div>
+    );
+  }
 
   return (
     // Défilement horizontal quand il y a beaucoup de sports (barre de défilement cachée)
