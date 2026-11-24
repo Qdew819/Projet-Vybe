@@ -45,6 +45,7 @@ const SPORT_IMAGES: Record<string, string> = {
   curling: "/sports/curling.jpg",
   lacrosse: "/sports/lacrosse.jpg",
   crosse: "/sports/lacrosse.jpg",
+  handball: "/sports/handball.jpg",
 };
 
 function toKey(value: string): string {
