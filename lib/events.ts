@@ -196,3 +196,19 @@ export function eventActionErrorKey(error: { message?: string; code?: string; de
   if (error.code === "42501") return "eventForm.errorAuth";
   return "event.errorGeneric";
 }
+
+// ---------- Suppression ----------
+
+// Supprime définitivement un événement (organisateur seulement, selon les règles d'accès de la base).
+// Renvoie null si c'est fait, sinon une description de l'erreur (pour la console).
+export async function deleteEvent(supabase: SupabaseClient, eventId: string): Promise<string | null> {
+  let result = await supabase.from("events").delete().eq("id", eventId).select("id");
+  // L'adresse privée bloque la suppression (clé étrangère sans suppression en cascade) : on la retire d'abord
+  if (result.error?.code === "23503") {
+    await supabase.from("event_locations").delete().eq("event_id", eventId);
+    result = await supabase.from("events").delete().eq("id", eventId).select("id");
+  }
+  if (result.error) return `${result.error.message} (code ${result.error.code})`;
+  if (!result.data || result.data.length === 0) return "aucune ligne supprimée (règle d'accès DELETE manquante sur events ?)";
+  return null;
+}

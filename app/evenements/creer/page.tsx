@@ -340,7 +340,8 @@ export default function CreerEvenement() {
       }
     }
 
-    router.push(`/evenements/${created.id}?cree=${addressSaved ? "1" : "sans-adresse"}`);
+    // Retour à la liste, onglet « Mes événements » (voir app/evenements/page.tsx)
+    router.push(`/evenements?cree=${addressSaved ? "1" : "sans-adresse"}`);
   }
 
   if (!ready) {

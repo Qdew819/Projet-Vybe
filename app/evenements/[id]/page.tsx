@@ -14,6 +14,7 @@ import {
   EVENT_TITLE_MAX,
   EVENT_TITLE_MIN,
   combineDateTime,
+  deleteEvent,
   eventActionErrorKey,
   eventSaveErrorKey,
   formatEventDate,
@@ -43,7 +44,7 @@ export default function EvenementPage() {
 }
 
 type Load = "loading" | "notFound" | "error" | "ready";
-type Confirm = { kind: "leave"; status: ParticipantStatus } | { kind: "cancelEvent" } | { kind: "remove"; person: Person } | null;
+type Confirm = { kind: "leave"; status: ParticipantStatus } | { kind: "delete" } | { kind: "remove"; person: Person } | null;
 
 const iconProps = {
   "aria-hidden": true,
@@ -196,10 +197,22 @@ function Evenement() {
       await refresh(row, uid);
       setLoad("ready");
 
-      // Arrivée depuis la page de création : message, puis on retire ?cree= de l'adresse
-      const created = new URLSearchParams(window.location.search).get("cree");
+      // ?cree= : arrivée depuis la page de création (message)
+      // ?modifier=1 : arrivée depuis « Gérer » → « Modifier » d'une carte (formulaire ouvert)
+      const query = new URLSearchParams(window.location.search);
+      const created = query.get("cree");
       if (created) {
         showToast(created === "sans-adresse" ? t("eventForm.createdNoAddress") : t("eventForm.created"));
+      }
+      if (query.get("modifier") === "1" && row.organizer_id === uid && !row.cancelled) {
+        setEditing(true);
+        // Après l'affichage du formulaire : on défile jusqu'à lui et on place le curseur dans le premier champ
+        requestAnimationFrame(() => {
+          document.getElementById("titre-gerer")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          document.getElementById("modif-titre")?.focus({ preventScroll: true });
+        });
+      }
+      if (created || query.has("modifier")) {
         window.history.replaceState(window.history.state, "", window.location.pathname);
       }
     });
@@ -298,20 +311,18 @@ function Evenement() {
     showToast(t("event.removed"));
   }
 
-  async function cancelEvent() {
+  // Suppression définitive : plus personne ne voit l'événement
+  async function removeEvent() {
     if (!event) return;
     setConfirmBusy(true);
-    const { error } = await createClient().from("events").update({ cancelled: true }).eq("id", event.id);
-    setConfirmBusy(false);
-    if (error) {
-      console.error(`Annulation impossible : ${error.message} (code ${error.code})`);
-      setConfirmError(t("event.errorGeneric"));
+    const problem = await deleteEvent(createClient(), event.id);
+    if (problem) {
+      console.error(`Suppression impossible : ${problem}`);
+      setConfirmBusy(false);
+      setConfirmError(t("event.deleteError"));
       return;
     }
-    setConfirm(null);
-    setEditing(false);
-    setEvent({ ...event, cancelled: true });
-    showToast(t("event.cancelDone"));
+    router.push("/evenements?supprime=1");
   }
 
   // ---------- Affichage ----------
@@ -500,7 +511,7 @@ function Evenement() {
           </section>
 
           {/* Gérer (organisateur) */}
-          {isOrganizer && !event.cancelled && (
+          {isOrganizer && (
             <section aria-labelledby="titre-gerer" className="mt-8 rounded-2xl border-2 border-accent-ink/40 p-4">
               <h2 id="titre-gerer" className="text-lg font-black">
                 {t("event.manage")}
@@ -561,7 +572,7 @@ function Evenement() {
               )}
 
               <div className="mt-6 flex flex-col gap-3">
-                {editing ? (
+                {event.cancelled ? null : editing ? (
                   <EditForm
                     event={event}
                     goingCount={goingCount}
@@ -585,11 +596,11 @@ function Evenement() {
                   type="button"
                   onClick={() => {
                     setConfirmError("");
-                    setConfirm({ kind: "cancelEvent" });
+                    setConfirm({ kind: "delete" });
                   }}
                   className="min-h-12 rounded-2xl border border-danger font-bold text-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
                 >
-                  {t("event.cancelEvent")}
+                  {t("event.delete")}
                 </button>
               </div>
             </section>
@@ -625,8 +636,8 @@ function Evenement() {
         title={
           confirm?.kind === "remove"
             ? t("event.removeTitle").replace("{name}", personName(confirm.person, unknown))
-            : confirm?.kind === "cancelEvent"
-              ? t("event.cancelTitle")
+            : confirm?.kind === "delete"
+              ? t("event.deleteTitle")
               : confirm?.kind === "leave" && confirm.status === "pending"
                 ? t("event.cancelRequestTitle")
                 : t("event.leaveTitle")
@@ -634,8 +645,8 @@ function Evenement() {
         description={
           confirm?.kind === "remove"
             ? t("event.removeText")
-            : confirm?.kind === "cancelEvent"
-              ? t("event.cancelText")
+            : confirm?.kind === "delete"
+              ? t("event.deleteText")
               : confirm?.kind === "leave" && confirm.status === "pending"
                 ? undefined
                 : t("event.leaveText")
@@ -643,8 +654,8 @@ function Evenement() {
         confirmLabel={
           confirm?.kind === "remove"
             ? t("event.remove")
-            : confirm?.kind === "cancelEvent"
-              ? t("event.cancelEvent")
+            : confirm?.kind === "delete"
+              ? t("event.deleteConfirm")
               : confirm?.kind === "leave" && confirm.status === "pending"
                 ? t("event.cancelRequest")
                 : t("event.leaveConfirm")
@@ -654,7 +665,7 @@ function Evenement() {
         error={confirmError}
         onConfirm={() => {
           if (confirm?.kind === "remove") void removeParticipant(confirm.person);
-          else if (confirm?.kind === "cancelEvent") void cancelEvent();
+          else if (confirm?.kind === "delete") void removeEvent();
           else void leave();
         }}
         onClose={() => {
