@@ -54,7 +54,8 @@ const iconProps = {
 
 // Fil de vidéos plein écran façon Reels : une vidéo par écran, défilement aimanté, lecture automatique de la vidéo
 // visible à plus de 70 %. Seules la vidéo courante, la précédente et les deux suivantes sont montées.
-export default function VideoFeed({ startId }: { startId: string | null }) {
+// sport : filtre venu de l'accueil (/videos?sport=<valeur>), null : tous les sports
+export default function VideoFeed({ startId, sport: sportFilter = null }: { startId: string | null; sport?: string | null }) {
   const router = useRouter();
   const t = useT();
   const { state: catalog } = useSportsCatalog();
@@ -137,12 +138,12 @@ export default function VideoFeed({ startId }: { startId: string | null }) {
   // Premier lot : à l'ouverture, au changement d'onglet, après « Réessayer » ou « Revoir depuis le début »
   useEffect(() => {
     if (!me) return;
-    const cursor = newCursor(tab, startId);
+    const cursor = newCursor(tab, startId, sportFilter);
     cursorRef.current = cursor;
     loadingRef.current = false;
     // Lancé hors du corps de l'effet : les états ne changent qu'à l'arrivée des données
     void Promise.resolve().then(() => loadMore(cursor));
-  }, [me, tab, startId, attempt, loadMore]);
+  }, [me, tab, startId, sportFilter, attempt, loadMore]);
 
   // Suite du fil quand on approche de la fin
   useEffect(() => {
@@ -289,7 +290,13 @@ export default function VideoFeed({ startId }: { startId: string | null }) {
 
           {empty && (
             <section className="flex h-dvh snap-start flex-col items-center justify-center gap-5 px-8 text-center">
-              <p className="text-lg font-bold">{tab === "following" ? t("reels.emptyFollowing") : t("reels.empty")}</p>
+              <p className="text-lg font-bold">
+                {sportFilter
+                  ? t("home.videosEmptySport").replace("{sport}", sports.get(sportFilter)?.name ?? sportFilter)
+                  : tab === "following"
+                    ? t("reels.emptyFollowing")
+                    : t("reels.empty")}
+              </p>
               {tab === "forYou" ? (
                 <Link
                   href="/publier"

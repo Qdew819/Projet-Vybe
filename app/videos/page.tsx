@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { ReelSkeleton } from "../../components/videos/ReelItem";
 import VideoFeed from "../../components/videos/VideoFeed";
 
-// Fil de vidéos plein écran : /videos (ou /videos?start=<id> pour commencer par une vidéo précise).
+// Fil de vidéos plein écran : /videos (ou /videos?start=<id> pour commencer par une vidéo précise,
+// et ?sport=<valeur de posts.sport> pour ne voir que ce sport, comme le filtre de l'accueil).
 // Pas d'AppShell : la barre du bas est masquée, comme sur /publier.
 export default function VideosPage() {
   return (
@@ -24,7 +25,9 @@ export default function VideosPage() {
 }
 
 function VideosFromParams() {
-  const start = useSearchParams().get("start");
-  // Nouvelle vidéo de départ : on repart d'un fil neuf
-  return <VideoFeed key={start ?? ""} startId={start} />;
+  const params = useSearchParams();
+  const start = params.get("start");
+  const sport = params.get("sport") || null;
+  // Nouvelle vidéo de départ ou nouveau sport : on repart d'un fil neuf
+  return <VideoFeed key={`${start ?? ""}|${sport ?? ""}`} startId={start} sport={sport} />;
 }

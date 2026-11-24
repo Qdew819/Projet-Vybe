@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import AppShell from "../../components/AppShell";
 import Avatar from "../../components/Avatar";
 import NotificationBell from "../../components/NotificationBell";
@@ -13,10 +13,10 @@ import PopularVideos from "../../components/home/PopularVideos";
 import { useT } from "../../lib/i18n";
 import { isLanguage, setLanguage } from "../../lib/language";
 import { initialsOf } from "../../lib/profile";
-import { sportImage } from "../../lib/sportImages";
 import { createClient } from "../../lib/supabase/client";
 import { isThemeChoice, setTheme } from "../../lib/theme";
-import { fetchCatalog, loadMySports, withDetails, type UserSport } from "../../lib/userSports";
+import { findSportOption, toSportOption, toSportOptions, type SportOption } from "../../lib/sportOptions";
+import { fetchCatalog, loadMySports, withDetails } from "../../lib/userSports";
 
 // Bannière « Ajoute ta ville » masquée pendant 7 jours après un clic sur ×
 const CITY_BANNER_KEY = "vybe.cityBannerHiddenUntil";
@@ -54,17 +54,42 @@ const iconProps = {
   strokeLinejoin: "round" as const,
 };
 
+// useSearchParams (filtre ?sport=) doit être lu à l'intérieur d'un <Suspense>
 export default function Accueil() {
+  return (
+    <Suspense fallback={<HomeLoading />}>
+      <AccueilContent />
+    </Suspense>
+  );
+}
+
+function HomeLoading() {
+  const t = useT();
+  return (
+    <AppShell active="accueil">
+      <h1 className="sr-only">{t("home.title")}</h1>
+      <div role="status" className="flex flex-1 items-center justify-center text-muted">
+        {t("common.loading")}
+      </div>
+    </AppShell>
+  );
+}
+
+function AccueilContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const t = useT();
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState("");
   // Ma photo et mon nom, pour la barre « Quoi de neuf ? »
   const [myAvatar, setMyAvatar] = useState<string | null>(null);
   const [myName, setMyName] = useState("");
-  // Cercle de sport choisi : filtre le fil de publications (slug du sport)
-  const [sportFilter, setSportFilter] = useState<UserSport["sport"] | null>(null);
-  const [sports, setSports] = useState<UserSport[]>([]);
+  // Icône de sport choisie : filtre les vidéos populaires et le fil. Gardée dans l'adresse (/accueil?sport=hockey) :
+  // elle reste après un rafraîchissement et le lien est partageable. Valeur = posts.sport (lib/sportOptions.ts).
+  const sportFilter = searchParams.get("sport") || null;
+  // Mes sports (icônes) et tout le catalogue (nom d'un sport venu d'un lien partagé qui n'est pas dans mes sports)
+  const [sports, setSports] = useState<SportOption[]>([]);
+  const [catalog, setCatalog] = useState<SportOption[]>([]);
   const [showCityBanner, setShowCityBanner] = useState(false);
   // L'image du logo n'a pas pu être chargée : on affiche « VYBE » en texte à la place
   const [logoFailed, setLogoFailed] = useState(false);
@@ -117,7 +142,10 @@ export default function Accueil() {
       const [locationResult, sportsResult] = await Promise.all([
         supabase.from("user_locations").select("user_id").eq("user_id", uid).maybeSingle(),
         Promise.all([loadMySports(supabase, uid), fetchCatalog(supabase)]).then(
-          ([choices, catalog]) => ({ data: withDetails(choices, catalog), error: null }),
+          ([choices, all]) => ({
+            data: { mine: withDetails(choices, all).map(({ sport }) => toSportOption(sport)), all: toSportOptions(all) },
+            error: null,
+          }),
           (err: unknown) => ({ data: null, error: err })
         ),
       ]);
@@ -131,7 +159,8 @@ export default function Accueil() {
       if (sportsResult.error || !sportsResult.data) {
         console.error("Lecture des sports impossible :", sportsResult.error);
       } else {
-        setSports(sportsResult.data);
+        setSports(sportsResult.data.mine);
+        setCatalog(sportsResult.data.all);
       }
       setReady(true);
     });
@@ -151,6 +180,20 @@ export default function Accueil() {
     toastTimer.current = setTimeout(() => setToast(""), 3000);
   }, []);
 
+  // Choisit le sport du filtre (null : tous les sports) en gardant les autres paramètres de l'adresse
+  const setSportFilter = useCallback(
+    (value: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (value) params.set("sport", value);
+      else params.delete("sport");
+      const query = params.toString();
+      router.replace(query ? `/accueil?${query}` : "/accueil", { scroll: false });
+    },
+    [router, searchParams]
+  );
+  const activeSport = findSportOption(sports, sportFilter) ?? findSportOption(catalog, sportFilter);
+  const sportLabel = activeSport?.label ?? sportFilter ?? "";
+
   // Retour du formulaire de publication (?publie=1) : « Publié ! », puis on nettoie l'adresse.
   // Le fil est relu à l'arrivée sur l'accueil : la nouvelle publication est en haut.
   useEffect(() => {
@@ -158,22 +201,17 @@ export default function Accueil() {
     // Dans un rappel, une fois l'accueil affiché (l'adresse est nettoyée au même moment : si React relance
     // l'effet en développement, le premier rappel est annulé et le second voit encore ?publie=1)
     const timer = setTimeout(() => {
-      window.history.replaceState(window.history.state, "", window.location.pathname);
+      // Seul ?publie est retiré : le filtre ?sport reste
+      const params = new URLSearchParams(window.location.search);
+      params.delete("publie");
+      const query = params.toString();
+      window.history.replaceState(window.history.state, "", query ? `${window.location.pathname}?${query}` : window.location.pathname);
       announce(t("publish.done"));
     }, 0);
     return () => clearTimeout(timer);
   }, [ready, announce, t]);
 
-  if (!ready) {
-    return (
-      <AppShell active="accueil">
-        <h1 className="sr-only">{t("home.title")}</h1>
-        <div role="status" className="flex flex-1 items-center justify-center text-muted">
-          {t("common.loading")}
-        </div>
-      </AppShell>
-    );
-  }
+  if (!ready) return <HomeLoading />;
 
   return (
     <AppShell active="accueil">
@@ -241,14 +279,14 @@ export default function Accueil() {
             </Shortcut>
           </li>
           {sports.length > 0 ? (
-            sports.map(({ sport }) => (
+            sports.map((sport) => (
               <li key={sport.id}>
-                {/* Un clic filtre le fil de publications sur ce sport ; un 2e clic retire le filtre */}
+                {/* Un clic filtre l'accueil sur ce sport (une seule icône active) ; un 2e clic retire le filtre */}
                 <SportFilterShortcut
-                  label={sport.name}
-                  image={sportImage(sport.slug, sport.name)}
-                  selected={sportFilter?.slug === sport.slug}
-                  onClick={() => setSportFilter(sportFilter?.slug === sport.slug ? null : sport)}
+                  label={sport.label}
+                  image={sport.image}
+                  selected={sportFilter === sport.value}
+                  onClick={() => setSportFilter(sportFilter === sport.value ? null : sport.value)}
                 >
                   <span aria-hidden="true" className="text-[28px] leading-none">
                     {sport.emoji}
@@ -335,11 +373,11 @@ export default function Accueil() {
           <button
             type="button"
             onClick={() => setSportFilter(null)}
-            aria-label={t("feed.removeFilter").replace("{sport}", sportFilter.name)}
+            aria-label={t("feed.removeFilter").replace("{sport}", sportLabel)}
             className="flex min-h-10 items-center gap-2 rounded-full border-2 border-accent-ink bg-accent-ink/10 px-4 text-sm font-bold text-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
           >
-            <span aria-hidden="true">{sportFilter.emoji}</span>
-            {sportFilter.name}
+            {activeSport?.emoji && <span aria-hidden="true">{activeSport.emoji}</span>}
+            {sportLabel}
             <svg {...iconProps} viewBox="0 0 24 24" className="h-4 w-4" strokeWidth={3}>
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
@@ -347,16 +385,23 @@ export default function Accueil() {
         </div>
       )}
 
-      <PostFeed me={userId} sport={sportFilter?.slug ?? null} onMessage={announce} />
+      <PostFeed
+        me={userId}
+        sport={sportFilter}
+        sportLabel={sportLabel}
+        onClearSport={() => setSportFilter(null)}
+        onMessage={announce}
+      />
 
-      {/* Vraies vidéos populaires (filtrées par le cercle de sport choisi) ; section masquée s'il n'y en a aucune */}
+      {/* Vraies vidéos populaires (filtrées par l'icône de sport choisie) ; sans filtre, section masquée s'il n'y en a aucune */}
       <PopularVideos
-        sport={sportFilter?.slug ?? null}
+        sport={sportFilter}
+        sportLabel={sportLabel}
         wrap={(content) => (
           <Section
             id="videos-populaires"
             title={t("home.popularVideos")}
-            seeAllHref="/videos"
+            seeAllHref={sportFilter ? `/videos?sport=${encodeURIComponent(sportFilter)}` : "/videos"}
             icon={
               <svg {...iconProps} viewBox="0 0 24 24" className="h-5 w-5" strokeWidth={2.2}>
                 <path d="M12 2c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5.5 1-8.5z" />
@@ -434,7 +479,8 @@ function Shortcut({
   );
 }
 
-// Cercle de sport : filtre le fil de publications (anneau vert plus épais quand il est choisi)
+// Icône de sport : filtre l'accueil. Active : anneau vert néon et lueur, nom en vert néon (accent-ink = #39ff14 en
+// mode sombre ; plus foncé en mode clair pour rester lisible sur fond blanc)
 function SportFilterShortcut({
   label,
   image,
@@ -448,11 +494,11 @@ function SportFilterShortcut({
   onClick: () => void;
   children: ReactNode;
 }) {
-  const ring = selected ? "ring-4 ring-accent ring-offset-2 ring-offset-background" : "";
+  const ring = selected ? "ring-4 ring-accent ring-offset-2 ring-offset-background shadow-[0_0_20px_rgba(57,255,20,0.8)]" : "";
   return (
     <button type="button" onClick={onClick} aria-pressed={selected} className={shortcutBase}>
       {image ? (
-        <span className={`relative block h-16 w-16 overflow-hidden rounded-full shadow-[0_0_12px_rgba(57,255,20,0.35)] transition-transform group-hover:scale-105 ${ring}`}>
+        <span className={`relative block h-16 w-16 overflow-hidden rounded-full transition-transform group-hover:scale-105 ${ring || "shadow-[0_0_12px_rgba(57,255,20,0.35)]"}`}>
           <Image src={image} alt="" fill sizes="64px" className="object-cover" />
         </span>
       ) : (

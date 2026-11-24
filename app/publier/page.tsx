@@ -21,7 +21,8 @@ import {
 } from "../../lib/posts";
 import { initialsOf } from "../../lib/profile";
 import { createClient } from "../../lib/supabase/client";
-import { loadMySports, useSportsCatalog, type CatalogSport } from "../../lib/userSports";
+import { useSportOptions, type SportOption } from "../../lib/sportOptions";
+import { loadMySports } from "../../lib/userSports";
 import {
   VIDEO_ACCEPT,
   VIDEO_MAX_BYTES,
@@ -59,7 +60,7 @@ export default function Publier() {
   const router = useRouter();
   const t = useT();
   const language = useLanguage();
-  const { state: catalogState } = useSportsCatalog();
+  const { state: catalogState } = useSportOptions();
 
   const [me, setMe] = useState<Person | null>(null);
   const [ready, setReady] = useState(false);
@@ -153,7 +154,7 @@ export default function Publier() {
 
   // Sports : les miens d'abord, puis tous les autres
   const sports = useMemo(() => {
-    const catalog = catalogState.status === "ready" ? catalogState.sports : [];
+    const catalog = catalogState.status === "ready" ? catalogState.options : [];
     const mine = mySportIds.flatMap((id) => catalog.find((s) => s.id === id) ?? []);
     return [...mine, ...catalog.filter((s) => !mySportIds.includes(s.id))];
   }, [catalogState, mySportIds]);
@@ -526,11 +527,12 @@ export default function Publier() {
             <ul className="flex w-max gap-2 py-0.5">
               {catalogState.status === "loading" &&
                 [0, 1, 2].map((n) => <li key={n} aria-hidden="true" className="h-11 w-28 animate-pulse rounded-full bg-surface" />)}
-              {sports.map((s: CatalogSport) => (
-                <li key={s.slug}>
-                  <button type="button" aria-pressed={sport === s.slug} onClick={() => setSport(sport === s.slug ? null : s.slug)} className={chip(sport === s.slug)}>
+              {/* Valeur enregistrée dans posts.sport : la même que celle des icônes de filtre de l'accueil (lib/sportOptions.ts) */}
+              {sports.map((s: SportOption) => (
+                <li key={s.value}>
+                  <button type="button" aria-pressed={sport === s.value} onClick={() => setSport(sport === s.value ? null : s.value)} className={chip(sport === s.value)}>
                     <span aria-hidden="true">{s.emoji}</span>
-                    {s.name}
+                    {s.label}
                   </button>
                 </li>
               ))}

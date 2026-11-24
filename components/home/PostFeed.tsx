@@ -16,21 +16,25 @@ import {
   type PostStats,
 } from "../../lib/posts";
 import { createClient } from "../../lib/supabase/client";
-import { errorDetails } from "../../lib/debugError"; // TEMP-DEBUG
 
 type Tab = "forYou" | "following";
 type Load = "loading" | "error" | "ready";
 
 // Fil de publications de l'accueil : « Pour toi » (tout ce que je peux voir) et « Abonnements » (personnes suivies).
-// sport : filtre choisi avec les cercles de sport en haut de l'accueil. refreshKey : change après une publication.
+// sport : filtre choisi avec les icônes de sport en haut de l'accueil (valeur de posts.sport), sportLabel : son nom,
+// onClearSport : retire le filtre. refreshKey : change après une publication.
 export default function PostFeed({
   me,
   sport,
+  sportLabel,
+  onClearSport,
   refreshKey = 0,
   onMessage,
 }: {
   me: string;
   sport: string | null;
+  sportLabel: string;
+  onClearSport: () => void;
   refreshKey?: number;
   onMessage: (text: string) => void;
 }) {
@@ -47,7 +51,13 @@ export default function PostFeed({
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreFailed, setMoreFailed] = useState(false);
   const [loadedAt, setLoadedAt] = useState(0);
-  const [debug, setDebug] = useState(""); // TEMP-DEBUG
+  const [shownSport, setShownSport] = useState(sport);
+
+  // Nouveau sport : squelettes pendant la lecture plutôt que l'ancien fil (réglé pendant le rendu, pas dans l'effet)
+  if (shownSport !== sport) {
+    setShownSport(sport);
+    setLoad("loading");
+  }
 
   // Première page : à l'ouverture, au changement d'onglet ou de sport, après une publication
   useEffect(() => {
@@ -69,11 +79,8 @@ export default function PostFeed({
         setLoadedAt(Date.now());
         setLoad("ready");
       } catch (err) {
-        console.error("TEMP-DEBUG fil de l'accueil :", err, (err as { cause?: unknown })?.cause); // TEMP-DEBUG
+        console.error(err);
         if (!cancelled) setLoad("error");
-        // TEMP-DEBUG : détails de l'erreur et présence d'une session dans le navigateur
-        const { data } = await supabase.auth.getSession(); // TEMP-DEBUG
-        if (!cancelled) setDebug(`${errorDetails(err)} · session : ${data.session ? "oui" : "non"}`); // TEMP-DEBUG
       }
     })();
     return () => {
@@ -134,13 +141,17 @@ export default function PostFeed({
       </div>
 
       <div id="fil-liste" role="tabpanel" aria-labelledby={`fil-${tab}`} className="mt-4 flex flex-col gap-4 px-4">
-        {load === "loading" && [0, 1].map((n) => <PostSkeleton key={n} />)}
+        {load === "loading" && (
+          <div role="status" aria-label={t("common.loading")} className="flex flex-col gap-4">
+            {[0, 1].map((n) => (
+              <PostSkeleton key={n} />
+            ))}
+          </div>
+        )}
 
         {load === "error" && (
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-danger">
             {t("feed.loadError")}
-            {/* TEMP-DEBUG */}
-            {debug && <span className="block w-full select-text text-xs text-muted">Détails : {debug}</span>}
             <button
               type="button"
               onClick={() => {
@@ -154,7 +165,20 @@ export default function PostFeed({
           </p>
         )}
 
-        {load === "ready" && posts.length === 0 && (
+        {load === "ready" && posts.length === 0 && sport && (
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line px-6 py-10 text-center">
+            <p className="font-bold">{t("feed.emptySport").replace("{sport}", sportLabel)}</p>
+            <button
+              type="button"
+              onClick={onClearSport}
+              className="min-h-11 rounded-full border-2 border-accent-ink px-5 py-2 text-sm font-bold text-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
+            >
+              {t("feed.allSports")}
+            </button>
+          </div>
+        )}
+
+        {load === "ready" && posts.length === 0 && !sport && (
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line px-6 py-10 text-center">
             <p className="font-bold">{t("feed.empty")}</p>
             <Link

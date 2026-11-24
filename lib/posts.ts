@@ -69,14 +69,14 @@ export async function fetchFeedPage(supabase: SupabaseClient, query: FeedQuery):
   if (query.sport) request = request.eq("sport", query.sport);
   if (query.before) request = request.lt("created_at", query.before);
   const { data, error } = await request;
-  if (error) throw new Error(`Lecture des publications impossible : ${error.message} (code ${error.code})`, { cause: error }); // TEMP-DEBUG : cause
+  if (error) throw new Error(`Lecture des publications impossible : ${error.message} (code ${error.code})`);
   return (data ?? []) as PostRow[];
 }
 
 // Personnes que je suis (abonnement accepté)
 export async function fetchFollowingIds(supabase: SupabaseClient, me: string): Promise<string[]> {
   const { data, error } = await supabase.from("follows").select("followed_id").eq("follower_id", me).eq("status", "accepted");
-  if (error) throw new Error(`Lecture des abonnements impossible : ${error.message} (code ${error.code})`, { cause: error }); // TEMP-DEBUG : cause
+  if (error) throw new Error(`Lecture des abonnements impossible : ${error.message} (code ${error.code})`);
   return (data ?? []).map((row) => String(row.followed_id));
 }
 

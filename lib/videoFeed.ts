@@ -6,6 +6,7 @@ import { EMPTY_STATS, POST_COLUMNS, fetchFollowingIds, loadPostDetails, type Pos
 // Fil de vidéos plein écran (/videos) : lots de 8 vidéos.
 // « Pour toi » : la vidéo touchée (?start), puis les vidéos populaires (popular_videos(30)), puis les plus récentes.
 // « Abonnements » : vidéos des personnes que je suis (abonnement accepté), plus récentes d'abord.
+// ?sport=<valeur de posts.sport> (filtre de l'accueil) : les deux onglets ne montrent que les vidéos de ce sport.
 // Pour chaque lot : un seul post_stats, une seule lecture des profils, des événements liés et de mes abonnements.
 
 export const REEL_BATCH = 8;
@@ -25,6 +26,7 @@ export type Reel = {
 // Où en est la lecture d'un onglet (gardé entre deux lots)
 export type FeedCursor = {
   tab: FeedTab;
+  sport: string | null; // filtre (posts.sport), null : tous les sports
   startId: string | null;
   startDone: boolean;
   popular: PostRow[] | null; // vidéos populaires lues une fois, servies au fur et à mesure
@@ -35,9 +37,10 @@ export type FeedCursor = {
   done: boolean;
 };
 
-export function newCursor(tab: FeedTab, startId: string | null): FeedCursor {
+export function newCursor(tab: FeedTab, startId: string | null, sport: string | null = null): FeedCursor {
   return {
     tab,
+    sport,
     startId: tab === "forYou" ? startId : null,
     startDone: false,
     popular: null,
@@ -80,6 +83,7 @@ async function fetchRecent(
       .order("created_at", { ascending: false })
       .limit(REEL_BATCH);
     if (authors) request = request.in("author_id", authors);
+    if (cursor.sport) request = request.eq("sport", cursor.sport);
     if (cursor.recentBefore) request = request.lt("created_at", cursor.recentBefore);
     const { data, error } = await request;
     if (error) throw new Error(`Lecture des vidéos récentes impossible : ${error.message} (code ${error.code})`);
@@ -129,7 +133,7 @@ export async function fetchNextReels(
   }
 
   if (!cursor.popular) {
-    const { data, error } = await supabase.rpc("popular_videos", { max_results: POPULAR_MAX, p_sport: null });
+    const { data, error } = await supabase.rpc("popular_videos", { max_results: POPULAR_MAX, p_sport: cursor.sport });
     if (error) throw new Error(`Lecture des vidéos populaires impossible : ${error.message} (code ${error.code})`);
     cursor.popular = ((data ?? []) as PostRow[]).filter((p) => p.video_url);
   }
