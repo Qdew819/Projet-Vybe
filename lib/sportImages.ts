@@ -34,6 +34,8 @@ const SPORT_IMAGES: Record<string, string> = {
   velo: "/sports/cycling.jpg",
   "cross-country-skiing": "/sports/cross-country-skiing.jpg",
   "ski-de-fond": "/sports/cross-country-skiing.jpg",
+  snowboarding: "/sports/snowboarding.jpg",
+  "planche-a-neige": "/sports/snowboarding.jpg",
 };
 
 function toKey(value: string): string {
