@@ -189,7 +189,7 @@ export type PopularVideos = { posts: PostRow[]; people: Map<string, Person>; sta
 
 export async function fetchPopularVideos(supabase: SupabaseClient, sport: string | null): Promise<PopularVideos> {
   const { data, error } = await supabase.rpc("popular_videos", { max_results: POPULAR_VIDEOS_LIMIT, p_sport: sport });
-  if (error) throw new Error(`Lecture des vidéos populaires impossible : ${error.message} (code ${error.code})`);
+  if (error) throw new Error(`Lecture des vidéos populaires impossible : ${error.message} (code ${error.code})`, { cause: error }); // TEMP-DEBUG : cause
   const posts = ((data ?? []) as PostRow[]).filter((p) => p.video_url);
   const [people, stats] = await Promise.all([
     loadPeople(supabase, [...new Set(posts.map((p) => p.author_id))]).catch((err: unknown) => {

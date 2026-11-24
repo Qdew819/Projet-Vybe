@@ -4,9 +4,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import VideoCard, { VideoCardSkeleton } from "./VideoCard";
 import { useT } from "../../lib/i18n";
 import { createClient } from "../../lib/supabase/client";
+import { errorDetails } from "../../lib/debugError"; // TEMP-DEBUG
 import { fetchPopularVideos, formatDuration, type PopularVideos as Videos } from "../../lib/videos";
 
-type Load = { status: "loading" } | { status: "error" } | { status: "ready"; videos: Videos };
+type Load = { status: "loading" } | { status: "error"; debug: string } | { status: "ready"; videos: Videos }; // TEMP-DEBUG : debug
 
 // « Vidéos populaires » de l'accueil : popular_videos(12, sport du cercle choisi), auteurs et compteurs en requêtes groupées.
 // wrap : la section de la page (titre, défilement horizontal). Rien n'est affiché s'il n'y a aucune vidéo.
@@ -28,9 +29,10 @@ export default function PopularVideos({ sport, wrap }: { sport: string | null; w
       (videos) => {
         if (!cancelled) setLoad({ status: "ready", videos });
       },
-      (err: unknown) => {
-        console.error(err);
-        if (!cancelled) setLoad({ status: "error" });
+      async (err: unknown) => {
+        console.error("TEMP-DEBUG vidéos populaires :", err, (err as { cause?: unknown })?.cause); // TEMP-DEBUG
+        const { data } = await createClient().auth.getSession(); // TEMP-DEBUG
+        if (!cancelled) setLoad({ status: "error", debug: `${errorDetails(err)} · session : ${data.session ? "oui" : "non"}` }); // TEMP-DEBUG
       }
     );
     return () => {
@@ -54,6 +56,8 @@ export default function PopularVideos({ sport, wrap }: { sport: string | null; w
     return wrap(
       <p className="mx-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-danger">
         {t("home.videosError")}
+        {/* TEMP-DEBUG */}
+        <span className="block w-full select-text text-xs text-muted">Détails : {load.debug}</span>
         <button type="button" onClick={() => setAttempt((n) => n + 1)} className="min-h-11 font-bold text-accent-ink underline">
           {t("eventForm.retry")}
         </button>

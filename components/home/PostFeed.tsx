@@ -16,6 +16,7 @@ import {
   type PostStats,
 } from "../../lib/posts";
 import { createClient } from "../../lib/supabase/client";
+import { errorDetails } from "../../lib/debugError"; // TEMP-DEBUG
 
 type Tab = "forYou" | "following";
 type Load = "loading" | "error" | "ready";
@@ -46,6 +47,7 @@ export default function PostFeed({
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreFailed, setMoreFailed] = useState(false);
   const [loadedAt, setLoadedAt] = useState(0);
+  const [debug, setDebug] = useState(""); // TEMP-DEBUG
 
   // Première page : à l'ouverture, au changement d'onglet ou de sport, après une publication
   useEffect(() => {
@@ -67,8 +69,11 @@ export default function PostFeed({
         setLoadedAt(Date.now());
         setLoad("ready");
       } catch (err) {
-        console.error(err);
+        console.error("TEMP-DEBUG fil de l'accueil :", err, (err as { cause?: unknown })?.cause); // TEMP-DEBUG
         if (!cancelled) setLoad("error");
+        // TEMP-DEBUG : détails de l'erreur et présence d'une session dans le navigateur
+        const { data } = await supabase.auth.getSession(); // TEMP-DEBUG
+        if (!cancelled) setDebug(`${errorDetails(err)} · session : ${data.session ? "oui" : "non"}`); // TEMP-DEBUG
       }
     })();
     return () => {
@@ -134,6 +139,8 @@ export default function PostFeed({
         {load === "error" && (
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-danger">
             {t("feed.loadError")}
+            {/* TEMP-DEBUG */}
+            {debug && <span className="block w-full select-text text-xs text-muted">Détails : {debug}</span>}
             <button
               type="button"
               onClick={() => {
