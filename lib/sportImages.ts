@@ -28,6 +28,10 @@ const SPORT_IMAGES: Record<string, string> = {
   natation: "/sports/swimming.jpg",
   running: "/sports/running.jpg",
   "course-a-pied": "/sports/running.jpg",
+  cycling: "/sports/cycling.jpg",
+  "cyclisme-sur-route": "/sports/cycling.jpg",
+  cyclisme: "/sports/cycling.jpg",
+  velo: "/sports/cycling.jpg",
 };
 
 function toKey(value: string): string {
