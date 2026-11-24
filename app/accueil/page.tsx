@@ -238,7 +238,7 @@ export default function Accueil() {
           {sports.length > 0 ? (
             sports.map(({ sport }) => (
               <li key={sport.id}>
-                <Shortcut href="/evenements" label={sport.name} image={sportImage(sport.slug)}>
+                <Shortcut href="/evenements" label={sport.name} image={sportImage(sport.slug, sport.name)}>
                   <span aria-hidden="true" className="text-[28px] leading-none">
                     {sport.emoji}
                   </span>
