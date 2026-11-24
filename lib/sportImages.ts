@@ -66,6 +66,20 @@ const SPORT_IMAGES: Record<string, string> = {
   randonnee: "/sports/hiking.jpg",
   "strength-training": "/sports/strength-training.jpg",
   musculation: "/sports/strength-training.jpg",
+  crossfit: "/sports/crossfit.jpg",
+  "cross-fit": "/sports/crossfit.jpg",
+  yoga: "/sports/yoga.jpg",
+  dance: "/sports/dance.jpg",
+  danse: "/sports/dance.jpg",
+  ballet: "/sports/dance.jpg",
+  kayaking: "/sports/kayaking.jpg",
+  kayak: "/sports/kayaking.jpg",
+  canoeing: "/sports/kayaking.jpg",
+  canot: "/sports/kayaking.jpg",
+  "kayak-et-canot": "/sports/kayaking.jpg",
+  "canot-kayak": "/sports/kayaking.jpg",
+  surfing: "/sports/surfing.jpg",
+  surf: "/sports/surfing.jpg",
 };
 
 function toKey(value: string): string {
