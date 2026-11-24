@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Combobox, { type ComboboxOption } from "../../../components/Combobox";
+import ConfirmDialog from "../../../components/ConfirmDialog";
 import LocationPicker from "../../../components/LocationPicker";
 import Switch from "../../../components/Switch";
 import { cityLabelWithoutCountry, type CityValue } from "../../../lib/cities";
@@ -110,6 +111,8 @@ export default function CreerEvenement() {
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Flèche en haut à gauche : confirmation avant d'abandonner l'événement en cours
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   // Connexion, sports du profil et ville du profil (pour préremplir)
   useEffect(() => {
@@ -356,8 +359,10 @@ export default function CreerEvenement() {
         <header className="grid grid-cols-[2.75rem_1fr_2.75rem] items-center">
           <button
             type="button"
-            onClick={() => (window.history.length > 1 ? router.back() : router.push("/evenements"))}
-            aria-label={t("common.back")}
+            onClick={() => setDiscardOpen(true)}
+            disabled={submitting}
+            aria-haspopup="dialog"
+            aria-label={t("eventForm.discard")}
             className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-surface transition-colors hover:border-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
           >
             <svg {...iconProps} className="h-5 w-5" strokeWidth={2.5}>
@@ -784,6 +789,19 @@ export default function CreerEvenement() {
         >
           {submitting ? t("eventForm.submitting") : t("eventForm.submit")}
         </button>
+
+        <ConfirmDialog
+          open={discardOpen}
+          title={t("eventForm.discardTitle")}
+          description={t("eventForm.discardText")}
+          confirmLabel={t("eventForm.discardConfirm")}
+          danger
+          onConfirm={() => {
+            setDiscardOpen(false);
+            router.push("/evenements");
+          }}
+          onClose={() => setDiscardOpen(false)}
+        />
       </form>
     </main>
   );

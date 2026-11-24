@@ -109,3 +109,90 @@ export function todayInputValue(now: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
+
+// ---------- Lecture et affichage ----------
+
+export const EVENT_COLUMNS =
+  "id, organizer_id, title, description, sport, starts_at, venue_name, city, country, capacity, min_age, join_mode, visibility, cover_url, cancelled, created_at, level, notify_on_join";
+
+export type EventRow = {
+  id: string;
+  organizer_id: string;
+  title: string;
+  description: string | null;
+  sport: string;
+  starts_at: string;
+  venue_name: string;
+  city: string | null;
+  country: string | null;
+  capacity: number | null;
+  min_age: number;
+  join_mode: JoinMode;
+  visibility: Visibility;
+  cover_url: string | null;
+  cancelled: boolean;
+  created_at: string;
+  level: string | null;
+  notify_on_join: boolean;
+};
+
+const EVENT_TIME_ZONE = "America/Toronto";
+
+// « Sam. 23 nov. · 19 h 00 » (fr-CA) ou « Sat, Nov 23 · 7:00 PM » (en-CA), heure de Toronto
+export function formatEventDate(iso: string, language: string): string {
+  const date = new Date(iso);
+  const locale = language === "en" ? "en-CA" : "fr-CA";
+  const day = new Intl.DateTimeFormat(locale, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: EVENT_TIME_ZONE,
+  }).format(date);
+  const time = new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit", timeZone: EVENT_TIME_ZONE }).format(date);
+  return `${day.charAt(0).toUpperCase()}${day.slice(1)} · ${time}`;
+}
+
+// Valeurs des champs <input type="date"> et <input type="time"> pour une date (heure de l'appareil)
+export function toDateInput(iso: string): string {
+  return todayInputValue(new Date(iso));
+}
+export function toTimeInput(iso: string): string {
+  const date = new Date(iso);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+// ---------- Participants (public.event_participants) ----------
+//
+// SEUL ENDROIT qui interprète event_participants : une ligne par personne (event_id, user_id, status).
+// Si la base utilise d'autres valeurs de statut, il suffit de les ajouter ici.
+
+export type ParticipantStatus = "going" | "pending" | "waitlist";
+
+export function toParticipantStatus(raw: unknown): ParticipantStatus | null {
+  const value = typeof raw === "string" ? raw.toLowerCase() : "";
+  if (["going", "confirmed", "accepted", "registered", "joined"].includes(value)) return "going";
+  if (["pending", "requested", "awaiting_approval"].includes(value)) return "pending";
+  if (["waitlist", "waitlisted", "waiting", "waiting_list"].includes(value)) return "waitlist";
+  return null;
+}
+
+export type Participant = { userId: string; status: ParticipantStatus };
+
+export function toParticipants(rows: Record<string, unknown>[] | null): Participant[] {
+  return (rows ?? []).flatMap((row) => {
+    const status = toParticipantStatus(row.status);
+    return typeof row.user_id === "string" && status ? [{ userId: row.user_id, status }] : [];
+  });
+}
+
+// Message d'erreur des fonctions join_event, leave_event, respond_to_join et remove_participant
+export function eventActionErrorKey(error: { message?: string; code?: string; details?: string | null }): MessageKey {
+  const text = `${error.message ?? ""} ${error.details ?? ""}`;
+  if (text.includes("age_insuffisant")) return "event.errorAge";
+  if (text.includes("termine")) return "event.errorEnded";
+  if (text.includes("annule")) return "event.errorCancelled";
+  if (text.includes("deja_inscrit")) return "event.errorAlreadyIn";
+  if (text.includes("complet")) return "event.errorFull";
+  if (error.code === "42501") return "eventForm.errorAuth";
+  return "event.errorGeneric";
+}
