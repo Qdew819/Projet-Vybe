@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useT } from "../lib/i18n";
+
+// Classes écrites en entier pour que Tailwind les génère
+const CLAMPS = { 1: "line-clamp-1", 2: "line-clamp-2", 3: "line-clamp-3", 4: "line-clamp-4", 5: "line-clamp-5" } as const;
 
 // Fond sous le bouton « Montrer plus » (posé sur la fin de la 3e ligne) : celui du bloc qui contient le texte
 const BACKDROPS = {
@@ -9,15 +12,19 @@ const BACKDROPS = {
   background: { solid: "bg-background", fade: "from-transparent to-background" },
 } as const;
 
-// Texte coupé à 3 lignes, comme sur Instagram : « Montrer plus » n'apparaît que si le texte dépasse vraiment
+// Texte coupé à 3 lignes (ou `lines`), comme sur Instagram : « Montrer plus » n'apparaît que si le texte dépasse vraiment
 // (mesuré après le montage et à chaque redimensionnement), puis « Montrer moins » pour le replier.
 // Les sauts de ligne sont gardés ; les mots longs (liens) passent à la ligne sans être coupés au milieu d'un mot ordinaire.
 export default function ExpandableText({
   text,
+  lines = 3,
+  prefix,
   className = "",
   backdrop = "surface",
 }: {
   text: string;
+  lines?: keyof typeof CLAMPS; // nombre de lignes affichées quand le texte est replié
+  prefix?: ReactNode; // affiché avant le texte, sur la même ligne (ex. nom de l'auteur en gras)
   className?: string; // taille, interligne, marge…
   backdrop?: keyof typeof BACKDROPS;
 }) {
@@ -37,7 +44,7 @@ export default function ExpandableText({
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [text]);
+  }, [text, lines]);
 
   function toggle() {
     expandedRef.current = !expanded;
@@ -49,7 +56,9 @@ export default function ExpandableText({
 
   return (
     <div className={`relative ${className}`}>
-      <p ref={ref} className={`whitespace-pre-line break-words ${expanded ? "" : "line-clamp-3"}`}>
+      <p ref={ref} className={`whitespace-pre-line break-words ${expanded ? "" : CLAMPS[lines]}`}>
+        {prefix}
+        {prefix ? " " : null}
         {text}
       </p>
       {overflows && !expanded && (

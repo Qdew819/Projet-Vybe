@@ -76,6 +76,7 @@ export default function PostCard({
   const name = author?.displayName || author?.username || t("event.member");
   const handle = author?.username ? `@${author.username}` : "";
   const images = post.image_urls ?? [];
+  const isVideo = Boolean(post.video_url);
   const format = new Intl.NumberFormat(language === "en" ? "en-CA" : "fr-CA", { notation: "compact" });
 
   async function toggleLike() {
@@ -169,7 +170,9 @@ export default function PostCard({
         </button>
       </header>
 
-      {post.body &&
+      {/* Publication avec vidéo : le texte est tout en bas, sous les actions (style Instagram) */}
+      {!isVideo &&
+        post.body?.trim() &&
         (fullText ? (
           <p className="mt-3 whitespace-pre-line break-words text-sm leading-snug">{post.body}</p>
         ) : (
@@ -251,6 +254,16 @@ export default function PostCard({
           </span>
         )}
       </div>
+
+      {/* Vidéo : nom de l'auteur en gras puis le texte, coupé à 2 lignes (« Montrer plus » seulement s'il dépasse) */}
+      {isVideo && post.body?.trim() && (
+        <ExpandableText
+          text={post.body.trim()}
+          lines={2}
+          prefix={<span className="font-bold">{name}</span>}
+          className="px-1 text-sm leading-snug text-foreground"
+        />
+      )}
 
       <PostMenu
         open={menuOpen}
