@@ -19,7 +19,7 @@ const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayout
 // Texte replié façon Instagram : « Nom texte… plus » sur `lines` lignes au total (2 par défaut).
 // - Si le texte dépasse, il est coupé au bon nombre de caractères pour que « … plus » tienne À LA SUITE du dernier
 //   mot visible, sur la dernière ligne (mesuré dans une copie invisible du paragraphe, à chaque changement de largeur).
-// - Toucher « plus » ou le texte le déplie sur place ; pas de « Montrer moins ».
+// - Toucher « plus » ou le texte le déplie sur place ; « moins », à la fin du texte déplié, le replie.
 // - S'il tient dans les lignes prévues : ni « … » ni « plus ». Les retours à la ligne sont gardés.
 // interactive = false (texte dans une carte qui est déjà un lien) : même rendu, sans dépliage.
 export default function ExpandableText({
@@ -86,9 +86,10 @@ export default function ExpandableText({
     setCut(text.slice(0, end).trimEnd());
   }, [text, lines]);
 
+  // Mesure au montage, à chaque changement de texte, et quand on replie le texte (« moins »)
   useIsoLayoutEffect(() => {
-    measure();
-  }, [measure]);
+    if (!expanded) measure();
+  }, [measure, expanded]);
 
   useEffect(() => {
     const element = measureRef.current?.parentElement;
@@ -103,6 +104,12 @@ export default function ExpandableText({
     expandedRef.current = true;
     setExpanded(true);
     onExpandedChange?.(true);
+  }
+
+  function collapse() {
+    expandedRef.current = false;
+    setExpanded(false);
+    onExpandedChange?.(false);
   }
 
   const tone = TONES[backdrop];
@@ -140,6 +147,21 @@ export default function ExpandableText({
         <p ref={visibleRef} className={`whitespace-pre-line break-words ${expanded ? "" : CLAMPS[lines]}`}>
           {head}
           {text}
+          {/* Déplié : « moins » en gris à la suite du texte, pour le replier */}
+          {expanded && (
+            <>
+              {" "}
+              <button
+                type="button"
+                aria-expanded
+                aria-label={t("text.showLess")}
+                onClick={collapse}
+                className={`cursor-pointer bg-transparent p-0 font-semibold focus-visible:rounded focus-visible:outline-2 ${tone}`}
+              >
+                {t("text.less")}
+              </button>
+            </>
+          )}
         </p>
       ) : (
         // Replié : « … plus » dans le flux, juste après le dernier mot visible
