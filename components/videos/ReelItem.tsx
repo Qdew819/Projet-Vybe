@@ -19,7 +19,7 @@ import { initialsOf } from "../../lib/profile";
 import { postSharePath } from "../../lib/share";
 import { createClient } from "../../lib/supabase/client";
 import type { Reel } from "../../lib/videoFeed";
-import { setMediaVolume, useMusicPlayer } from "../../lib/sound";
+import { setVideoSound, useMusicPlayer } from "../../lib/sound";
 import { recordView } from "../../lib/videos";
 
 const DOUBLE_TAP_MS = 280;
@@ -202,10 +202,9 @@ function LiveReel({
       video.pause();
       return;
     }
-    // Son d'origine seulement si l'auteur l'a gardé ; volume par Web Audio (Safari ignore .volume)
+    // Son d'origine seulement si l'auteur l'a gardé ; muted / volume natifs (pas de Web Audio pour les vidéos)
     const withSound = soundOn && hasUserActivation() && sound.originalSound;
-    video.muted = !withSound;
-    if (withSound) setMediaVolume(video, sound.originalVolume);
+    setVideoSound(video, withSound, sound.originalVolume);
     video.play().catch(() => {
       if (!video.muted) {
         // Son refusé par le navigateur : on relance en muet

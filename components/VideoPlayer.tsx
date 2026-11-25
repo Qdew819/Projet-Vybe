@@ -5,7 +5,7 @@ import { PlayIcon } from "./home/MediaThumb";
 import { PostSoundContext } from "./PostSoundContext";
 import { useT } from "../lib/i18n";
 import { createClient } from "../lib/supabase/client";
-import { claimSound, setMediaVolume, toggleSound, useSoundOn } from "../lib/sound";
+import { claimSound, setVideoSound, toggleSound, useSoundOn } from "../lib/sound";
 import { formatDuration, recordView } from "../lib/videos";
 
 // ---------- Une seule vidéo à la fois sur toute la page ----------
@@ -68,13 +68,12 @@ export default function VideoPlayer({
   const lastTime = useRef(0);
   const counted = useRef(false);
 
-  // L'attribut muted de React ne suit pas les changements : on règle la propriété directement.
-  // Volume par Web Audio (GainNode) : Safari ignore .volume.
+  // L'attribut muted de React ne suit pas les changements : on règle la propriété directement (son natif de la
+  // vidéo, à original_volume ; muette si le son est coupé ou si l'auteur a retiré le son d'origine)
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.muted = muted;
-    if (!muted) setMediaVolume(video, originalVolume);
+    setVideoSound(video, !muted, originalVolume);
   }, [muted, originalVolume]);
 
   // Vidéo audible : elle « prend » le son de la page (le son d'une autre publication s'arrête)
@@ -84,17 +83,18 @@ export default function VideoPlayer({
     return claimSound(postId, () => video.pause());
   }, [playing, muted, postId]);
 
-  // Lecture automatique : son selon le choix de la session ; si le navigateur refuse le son, on relance en muet
+  // Lecture automatique : son selon le choix de la visite ; si le navigateur refuse le son, on relance en muet
   const autoplay = useCallback(() => {
     const video = videoRef.current;
     if (!video || failed || userPaused.current || document.hidden) return;
+    video.muted = muted;
     playExclusive(video).catch(() => {
       if (!video.muted) {
         video.muted = true;
         playExclusive(video).catch(() => undefined);
       }
     });
-  }, [failed]);
+  }, [failed, muted]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -136,9 +136,16 @@ export default function VideoPlayer({
     }
   }
 
-  // Haut-parleur : active ou coupe le son de toute la page (pendant le geste : nécessaire pour l'AudioContext)
+  // Haut-parleur : active ou coupe le son de toute la page. Dans le geste : la vidéo passe tout de suite à
+  // muted = false (le navigateur l'accepte pendant un geste), et l'AudioContext de la musique est créé ou repris.
   function toggleMute() {
+    const video = videoRef.current;
+    const turningOn = !soundOn;
     toggleSound();
+    if (video) {
+      setVideoSound(video, turningOn && originalSound, originalVolume);
+      if (turningOn && video.paused && inView.current && !userPaused.current) playExclusive(video).catch(() => undefined);
+    }
   }
 
   // Temps de lecture cumulé (les sauts et le retour au début de la boucle ne comptent pas)

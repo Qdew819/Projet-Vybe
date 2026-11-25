@@ -8,10 +8,13 @@ import { fetchEpidemicStream, forgetEpidemicStream, type MusicSource } from "./m
 // - Tout démarre en muet (les navigateurs bloquent le son automatique). Le bouton haut-parleur active le son ; ce choix
 //   est gardé pour la visite (sessionStorage). Après un rechargement, le son ne revient qu'au premier geste
 //   (toucher, clic, touche) : avant, le navigateur refuserait de toute façon de le jouer.
-// - Volumes : Safari (iPhone) ignore la propriété .volume des balises audio/vidéo. Chaque élément audible passe donc
-//   par la Web Audio API (AudioContext → GainNode), créée au premier geste de l'utilisateur. Les fichiers viennent
-//   du stockage Supabase, qui répond avec les en-têtes CORS : les balises doivent avoir crossOrigin="anonymous",
-//   sinon le son passerait en silence dans le graphe audio.
+// - Son d'origine des VIDÉOS : propriétés natives muted / volume, jamais Web Audio. Relié à Web Audio, le son
+//   d'une vidéo devenait muet sur iPhone (Web Audio suit le bouton silencieux, une vidéo normale non) et dépendait
+//   de l'état de l'AudioContext. Limite connue : Safari (iPhone) ignore .volume, le son d'origine y joue à 100 %.
+// - MUSIQUE : volume par la Web Audio API (AudioContext → GainNode), créée au premier geste, car Safari ignore .volume.
+//   Les fichiers viennent du stockage Supabase (en-têtes CORS : Access-Control-Allow-Origin: *) : les balises ont
+//   crossOrigin="anonymous", sinon le son passerait en silence dans le graphe audio. Sur iPhone (iOS 17+), la session
+//   audio passe en « playback » pour que la musique joue même avec le bouton silencieux.
 // - Un seul son à la fois : chaque publication qui joue « prend » le son (claimSound) et arrête la précédente.
 
 // ---------- Choix « son activé » (pour la visite) ----------
@@ -57,6 +60,13 @@ function audioRunning(): boolean {
   return context?.state === "running";
 }
 
+// Une interaction a-t-elle déjà eu lieu dans la page ? (sans elle, le navigateur refuse le son)
+function hasActivation(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const activation = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
+  return activation ? activation.hasBeenActive : audioRunning();
+}
+
 // À appeler PENDANT un geste (clic sur le haut-parleur, ▶ d'un extrait) : crée ou relance l'AudioContext
 export function unlockAudio(): void {
   if (typeof window === "undefined") return;
@@ -67,7 +77,17 @@ export function unlockAudio(): void {
     context = new Ctor();
     context.onstatechange = notify;
   }
+  // Toujours relancé dans le geste (iPhone : un AudioContext créé ou repris hors d'un geste reste suspendu)
   if (context.state !== "running") void context.resume().then(notify, () => undefined);
+  // iPhone (iOS 17+) : son « lecture » plutôt qu'« ambiance », sinon le bouton silencieux coupe la musique
+  const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+  if (session && session.type !== "playback") {
+    try {
+      session.type = "playback";
+    } catch {
+      // Navigateur qui refuse : sans effet
+    }
+  }
   notify();
 }
 
@@ -77,7 +97,8 @@ function listenForGesture() {
   gestureListening = true;
   const onGesture = () => {
     if (soundWanted()) unlockAudio();
-    if (audioRunning()) {
+    notify(); // le son des vidéos peut maintenant être rendu (interaction faite)
+    if (audioRunning() || hasActivation()) {
       window.removeEventListener("pointerdown", onGesture, true);
       window.removeEventListener("keydown", onGesture, true);
       gestureListening = false;
@@ -89,13 +110,14 @@ function listenForGesture() {
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  if (soundWanted() && !audioRunning()) listenForGesture();
+  if (soundWanted() && !(audioRunning() && hasActivation())) listenForGesture();
   return () => listeners.delete(listener);
 }
 
-// Le son est-il réellement audible ? (activé ET AudioContext en marche). false au premier rendu.
+// Le son est-il activé (choix de la personne) et autorisé par le navigateur (une interaction a eu lieu) ?
+// Ne dépend PAS de l'AudioContext : le son des vidéos est natif. false au premier rendu.
 export function useSoundOn(): boolean {
-  return useSyncExternalStore(subscribe, () => soundWanted() && audioRunning(), () => false);
+  return useSyncExternalStore(subscribe, () => soundWanted() && hasActivation(), () => false);
 }
 
 // Active ou coupe le son pour toute la page (à appeler pendant le geste qui le demande)
@@ -108,10 +130,22 @@ export function setSoundOn(on: boolean): void {
 }
 
 export function toggleSound(): void {
-  setSoundOn(!(soundWanted() && audioRunning()));
+  setSoundOn(!(soundWanted() && hasActivation()));
 }
 
-// Volume d'un élément audio/vidéo (0 à 1), appliqué par un GainNode (seul moyen fiable sur iPhone)
+// Son d'origine d'une vidéo : muted / volume natifs (pas de Web Audio, voir l'en-tête du fichier)
+export function setVideoSound(video: HTMLVideoElement, audible: boolean, volume: number): void {
+  video.muted = !audible;
+  if (audible) {
+    try {
+      video.volume = Math.max(0, Math.min(1, volume));
+    } catch {
+      // Ignoré par Safari (iPhone) : le son y reste à 100 %
+    }
+  }
+}
+
+// Volume de la MUSIQUE (0 à 1), appliqué par un GainNode (seul moyen fiable sur iPhone). Pas pour les vidéos.
 export function setMediaVolume(element: HTMLMediaElement, volume: number): void {
   const value = Math.max(0, Math.min(1, volume));
   if (!context || directElements.has(element)) {
