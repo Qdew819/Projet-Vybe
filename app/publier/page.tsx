@@ -389,6 +389,7 @@ export default function Publier() {
             // Même carrousel que les publications ; « × » en haut à gauche (le compteur est en haut à droite)
             <ImageCarousel
               images={photos.map((photo) => photo.preview)}
+              zoomable={false}
               className="mb-3"
               overlay={(index) => (
                 <button
