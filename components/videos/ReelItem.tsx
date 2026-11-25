@@ -118,7 +118,7 @@ export default function ReelItem({
       ) : (
         poster &&
         (firstFraming?.aspect ? (
-          <FramedBox framing={firstFraming}>
+          <FramedBox framing={firstFraming} poster={poster}>
             {/* eslint-disable-next-line @next/next/no-img-element -- affiche recadrée comme la vidéo */}
             <img src={poster} alt="" draggable={false} style={framedMediaStyle(firstFraming, firstFraming.aspect)} />
           </FramedBox>
@@ -406,7 +406,7 @@ function LiveReel({
             <div key={`${index}-${item.url}`} className="relative h-full w-full shrink-0 snap-center snap-always">
               {framed ? (
                 // Cadrage choisi dans l'éditeur de /publier (sans réencodage) : cadre 4:5 centré
-                <FramedBox framing={framed}>
+                <FramedBox framing={framed} poster={item.poster ?? null}>
                   <video
                     ref={(element) => {
                       videoRefs.current[index] = element;
@@ -746,11 +746,11 @@ function LiveReel({
 }
 
 // Cadre 4:5 centré dans l'écran du fil (vidéo ou affiche recadrée), fond noir ou flou selon le cadrage
-function FramedBox({ framing, children }: { framing: Framing; children: ReactNode }) {
+function FramedBox({ framing, poster, children }: { framing: Framing; poster: string | null; children: ReactNode }) {
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
       <div className="relative aspect-[4/5] w-[min(100%,calc(100dvh*0.8))] overflow-hidden bg-black">
-        <FramedBackground framing={framing} poster={null} />
+        <FramedBackground framing={framing} poster={poster} />
         {children}
       </div>
     </div>
