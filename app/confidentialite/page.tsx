@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { Metadata } from "next";
 import Link from "next/link";
+import BackButton from "./BackButton";
 import { renderMarkdown, type MarkdownClasses } from "../../lib/markdown";
 
 // Politique de confidentialité : page publique (aucune connexion nécessaire), rendue côté serveur à partir de
@@ -37,12 +38,15 @@ export default function PrivacyPolicyPage() {
   return (
     <main className="min-h-dvh bg-background text-foreground">
       <div className="mx-auto w-full max-w-3xl px-5 pb-16 pt-6">
-        <Link
-          href="/"
-          className="inline-flex min-h-11 items-center text-2xl font-black italic tracking-tight text-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
-        >
-          VYBE
-        </Link>
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <Link
+            href="/"
+            className="inline-flex min-h-11 items-center text-2xl font-black italic tracking-tight text-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
+          >
+            VYBE
+          </Link>
+        </div>
         <article className="mt-6 text-[15px] text-foreground/90">{renderMarkdown(source, classes)}</article>
       </div>
     </main>
