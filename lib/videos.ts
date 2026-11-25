@@ -5,9 +5,10 @@ import {
   POST_BUCKET,
   VIDEO_BUCKET,
   loadPostStats,
+  mediaFiles,
+  removeFiles,
   removePostImages,
   removeVideoPaths,
-  storagePath,
   uploadPostImage,
   type MediaItem,
   type PostRow,
@@ -172,7 +173,10 @@ export async function uploadPoster(supabase: SupabaseClient, userId: string, id:
 const MEDIA_UPLOAD_CONCURRENCY = 3;
 
 export type MediaDraft =
-  | { kind: "image"; blob: Blob; alt?: string }
+  // Élément déjà en ligne (modification d'une publication) : gardé tel quel, rien n'est envoyé
+  | { kind: "existing"; item: MediaItem }
+  // source : photo de base (non recadrée, sans texte) envoyée aussi quand la photo a été modifiée dans l'éditeur
+  | { kind: "image"; blob: Blob; alt?: string; source?: Blob | null; framing?: Framing | null; overlays?: MediaOverlay[] | null }
   | { kind: "video"; file: File; duration: number; poster: Blob | null; framing?: Framing | null; overlays?: MediaOverlay[] | null };
 
 // Envoie photos et vidéos (avec leur affiche), 3 à la fois, en gardant l'ordre choisi. onProgress(éléments terminés).
@@ -192,10 +196,24 @@ export async function uploadPostMedia(
   let failure: unknown = null;
 
   async function send(draft: MediaDraft): Promise<MediaItem> {
+    if (draft.kind === "existing") return draft.item;
     if (draft.kind === "image") {
       const image = await uploadPostImage(supabase, userId, draft.blob);
       imagePaths.push(image.path);
-      return { type: "image", url: image.url, ...(draft.alt ? { alt: draft.alt } : {}) };
+      let source: string | null = null;
+      if (draft.source) {
+        const uploaded = await uploadPostImage(supabase, userId, draft.source);
+        imagePaths.push(uploaded.path);
+        source = uploaded.url;
+      }
+      return {
+        type: "image",
+        url: image.url,
+        ...(draft.alt ? { alt: draft.alt } : {}),
+        ...(source ? { source } : {}),
+        ...(source && draft.framing ? { framing: draft.framing } : {}),
+        ...(source && draft.overlays && draft.overlays.length > 0 ? { overlays: draft.overlays } : {}),
+      };
     }
     const id = crypto.randomUUID();
     const video = await uploadVideo(supabase, userId, id, draft.file, () => undefined);
@@ -241,9 +259,7 @@ export async function uploadPostMedia(
 
 // Supprime les fichiers d'éléments déjà envoyés (publication finalement refusée par la base)
 export async function removeMediaFiles(supabase: SupabaseClient, media: MediaItem[]): Promise<void> {
-  const images = media.flatMap((m) => storagePath(m.type === "image" ? m.url : m.poster, POST_BUCKET) ?? []);
-  const videos = media.flatMap((m) => (m.type === "video" ? (storagePath(m.url, VIDEO_BUCKET) ?? []) : []));
-  await Promise.all([removePostImages(supabase, images), removeVideoPaths(supabase, videos)]);
+  await removeFiles(supabase, mediaFiles(media));
 }
 
 // Colonnes de compatibilité écrites avec posts.media : photos dans l'ordre, PREMIÈRE vidéo (null s'il n'y en a pas)

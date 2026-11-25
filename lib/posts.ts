@@ -22,7 +22,7 @@ export const POST_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
 export const POST_IMAGE_MAX_INPUT_BYTES = 20 * 1024 * 1024; // avant compression (le stockage accepte 5 Mo après)
 
 export const POST_COLUMNS =
-  "id, author_id, body, media, image_urls, video_url, video_poster_url, video_duration_s, music_provider, music_external_id, music_track_id, music_start_s, music_volume, original_sound, original_volume, sport, event_id, created_at";
+  "id, author_id, body, media, image_urls, video_url, video_poster_url, video_duration_s, music_provider, music_external_id, music_track_id, music_start_s, music_volume, original_sound, original_volume, sport, event_id, created_at, edited_at";
 export const COMMENT_COLUMNS = "id, post_id, author_id, body, created_at";
 
 export type PostRow = {
@@ -48,6 +48,7 @@ export type PostRow = {
   sport: string | null;
   event_id: string | null;
   created_at: string;
+  edited_at?: string | null; // rempli par la base à chaque modification (« · modifié »)
 };
 
 // framing : cadrage d'une VIDÉO dans le cadre 4:5 (lib/framing.ts) ; les photos sont recadrées avant l'envoi
@@ -58,6 +59,9 @@ export type MediaItem = {
   duration_s?: number | null;
   framing?: Framing | null;
   alt?: string | null; // photo : texte écrit sur l'image (accessibilité)
+  // Photo modifiée dans l'éditeur : photo de base (non recadrée, sans texte) gardée pour la re-modifier sans perte ;
+  // framing et overlays décrivent alors ce qui a été appliqué à url (jamais redessinés à l'affichage des photos)
+  source?: string | null;
   overlays?: MediaOverlay[] | null; // vidéo : textes affichés par-dessus (lib/overlayData.ts)
 };
 
@@ -69,7 +73,19 @@ function parseMedia(value: unknown): MediaItem[] {
     if ((item.type !== "image" && item.type !== "video") || typeof item.url !== "string" || !item.url) return [];
     if (item.type === "image") {
       const alt = typeof item.alt === "string" ? item.alt.slice(0, 1300) : "";
-      return [{ type: "image", url: item.url, ...(alt ? { alt } : {}) }];
+      const source = typeof item.source === "string" && item.source ? item.source : null;
+      const framing = source ? parseFraming(item.framing) : null;
+      const overlays = source ? parseOverlays(item.overlays) : null;
+      return [
+        {
+          type: "image",
+          url: item.url,
+          ...(alt ? { alt } : {}),
+          ...(source ? { source } : {}),
+          ...(framing ? { framing } : {}),
+          ...(overlays ? { overlays } : {}),
+        },
+      ];
     }
     return [
       {
@@ -363,21 +379,52 @@ export async function deletePost(supabase: SupabaseClient, post: PostRow): Promi
     );
     return false;
   }
-  // Tous les fichiers : ceux de media et ceux des anciennes colonnes (doublons retirés)
-  const media = postMedia(post);
+  await removeFiles(supabase, postFiles(post));
+  return true;
+}
+
+// ---------- Fichiers d'une publication (Storage) ----------
+
+export type PostFiles = { images: string[]; videos: string[] }; // chemins dans les espaces « posts » et « videos »
+
+// Fichiers de photos / vidéos (photos, photos de base, affiches, vidéos), doublons retirés
+export function mediaFiles(media: MediaItem[]): PostFiles {
   const images = new Set<string>();
   const videos = new Set<string>();
-  for (const url of [...(post.image_urls ?? []), post.video_poster_url, ...media.map((m) => (m.type === "image" ? m.url : m.poster))]) {
+  for (const m of media) {
+    for (const url of m.type === "image" ? [m.url, m.source] : [m.poster]) {
+      const path = storagePath(url, POST_BUCKET);
+      if (path) images.add(path);
+    }
+    if (m.type === "video") {
+      const path = storagePath(m.url, VIDEO_BUCKET);
+      if (path) videos.add(path);
+    }
+  }
+  return { images: [...images], videos: [...videos] };
+}
+
+// Tous les fichiers d'une publication : ceux de media et ceux des anciennes colonnes
+export function postFiles(post: PostRow): PostFiles {
+  const fromMedia = mediaFiles(postMedia(post));
+  const images = new Set(fromMedia.images);
+  const videos = new Set(fromMedia.videos);
+  for (const url of [...(post.image_urls ?? []), post.video_poster_url]) {
     const path = storagePath(url, POST_BUCKET);
     if (path) images.add(path);
   }
-  for (const url of [post.video_url, ...media.filter((m) => m.type === "video").map((m) => m.url)]) {
-    const path = storagePath(url, VIDEO_BUCKET);
-    if (path) videos.add(path);
-  }
-  await Promise.all([
-    removePostImages(supabase, [...images]),
-    removeVideoPaths(supabase, [...videos]),
-  ]);
-  return true;
+  const video = storagePath(post.video_url, VIDEO_BUCKET);
+  if (video) videos.add(video);
+  return { images: [...images], videos: [...videos] };
+}
+
+// Fichiers de before qui ne sont plus dans after (à supprimer après une modification réussie)
+export function removedFiles(before: PostFiles, after: PostFiles): PostFiles {
+  const keepImages = new Set(after.images);
+  const keepVideos = new Set(after.videos);
+  return { images: before.images.filter((p) => !keepImages.has(p)), videos: before.videos.filter((p) => !keepVideos.has(p)) };
+}
+
+export async function removeFiles(supabase: SupabaseClient, files: PostFiles): Promise<void> {
+  await Promise.all([removePostImages(supabase, files.images), removeVideoPaths(supabase, files.videos)]);
 }

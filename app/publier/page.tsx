@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Avatar from "../../components/Avatar";
+import ConfirmDialog from "../../components/ConfirmDialog";
 import MediaCarousel from "../../components/MediaCarousel";
 import MediaEditor from "../../components/publish/MediaEditor";
 import type { Framing } from "../../lib/framing";
@@ -19,14 +20,22 @@ import {
   POST_IMAGE_MAX_INPUT_BYTES,
   compressPostImage,
   isAcceptedPostImage,
+  POST_COLUMNS,
+  mediaFiles,
   postErrorKey,
+  postFiles,
+  postMedia,
+  removeFiles,
+  removedFiles,
   renderFramedPhoto,
   type MediaItem,
+  type PostRow,
 } from "../../lib/posts";
 import { initialsOf } from "../../lib/profile";
 import { createClient } from "../../lib/supabase/client";
 import { useSportOptions, type SportOption } from "../../lib/sportOptions";
-import { reportEpidemicUsage } from "../../lib/music";
+import { loadEpidemicTrack, loadTrack, postSound, reportEpidemicUsage } from "../../lib/music";
+import { fromOverlays } from "../../lib/overlayData";
 import { MUSIC_CLIP_SECONDS } from "../../lib/sound";
 import { loadMySports } from "../../lib/userSports";
 import {
@@ -37,29 +46,33 @@ import {
   readVideo,
   removeMediaFiles,
   uploadPostMedia,
+  type MediaDraft,
   videoContentType,
 } from "../../lib/videos";
 
 // Éléments choisis, dans l'ordre (photos déjà compressées, vidéos avec leur affiche capturée)
 // Photo : original (fichier choisi, gardé jusqu'à l'envoi pour re-modifier sans perte), base (compressée, pleine
 // image) et blob / preview (ce qui est envoyé et affiché : la base, ou la photo recadrée 4:5 après « Modifier »).
-// Vidéo : jamais réencodée ; son cadrage (framing) est enregistré dans posts.media.
+// Vidéo : jamais réencodée ; son cadrage (framing) et ses textes sont enregistrés dans posts.media.
+// remote : élément déjà en ligne (modification d'une publication) ; il n'est renvoyé que s'il est modifié (photo).
 type Draft =
   | {
       id: string;
       kind: "image";
-      original: Blob;
-      base: Blob;
+      original: Blob | null;
+      base: Blob | null;
       basePreview: string;
-      blob: Blob;
+      blob: Blob | null; // null : photo en ligne non modifiée (rien à envoyer)
       preview: string;
+      remote?: { url: string; source: string | null; alt: string };
       framing?: Framing;
       texts?: TextBlock[]; // textes de l'éditeur (redessinés depuis l'original à chaque modification)
     }
   | {
       id: string;
       kind: "video";
-      file: File;
+      file: File | null; // null : vidéo déjà en ligne
+      remote?: { url: string; poster: string | null; duration: number };
       preview: string;
       duration: number;
       aspect: number | null;
@@ -73,10 +86,83 @@ type Draft =
 const pickerButton =
   "flex min-h-12 flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-accent-ink/50 px-2 text-sm font-bold text-accent-ink transition-colors hover:border-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-accent-ink/50";
 
+// Seulement les aperçus locaux (blob:) ; les adresses des fichiers déjà en ligne ne se libèrent pas
+function revokeUrl(url: string | null | undefined) {
+  if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+}
+
 function revokeDraft(draft: Draft) {
-  URL.revokeObjectURL(draft.preview);
-  if (draft.kind === "image" && draft.basePreview !== draft.preview) URL.revokeObjectURL(draft.basePreview);
-  if (draft.kind === "video" && draft.posterPreview) URL.revokeObjectURL(draft.posterPreview);
+  revokeUrl(draft.preview);
+  if (draft.kind === "image" && draft.basePreview !== draft.preview) revokeUrl(draft.basePreview);
+  if (draft.kind === "video") revokeUrl(draft.posterPreview);
+}
+
+// Ce qui sera envoyé pour un élément : déjà en ligne et non modifié → gardé tel quel
+function toMediaDraft(item: Draft): MediaDraft {
+  if (item.kind === "image") {
+    if (!item.blob && item.remote) {
+      return {
+        kind: "existing",
+        item: {
+          type: "image",
+          url: item.remote.url,
+          ...(item.remote.alt ? { alt: item.remote.alt } : {}),
+          ...(item.remote.source ? { source: item.remote.source } : {}),
+          ...(item.remote.source && item.framing ? { framing: item.framing } : {}),
+          ...(item.remote.source && item.texts && item.texts.length > 0 ? { overlays: toOverlays(item.texts) } : {}),
+        },
+      };
+    }
+    const edited = Boolean(item.framing) || (item.texts?.length ?? 0) > 0;
+    return {
+      kind: "image",
+      blob: item.blob ?? item.base!,
+      alt: textAlt(item.texts),
+      // Photo modifiée : sa photo de base est envoyée aussi, pour pouvoir la re-modifier plus tard
+      source: edited ? item.base : null,
+      framing: item.framing ?? null,
+      overlays: toOverlays(item.texts ?? []),
+    };
+  }
+  if (!item.file && item.remote) {
+    const overlays = toOverlays(item.texts ?? []);
+    return {
+      kind: "existing",
+      item: {
+        type: "video",
+        url: item.remote.url,
+        poster: item.remote.poster,
+        duration_s: item.remote.duration || null,
+        ...(item.framing ? { framing: item.framing } : {}),
+        ...(overlays.length > 0 ? { overlays } : {}),
+      },
+    };
+  }
+  return {
+    kind: "video",
+    file: item.file!,
+    duration: item.duration,
+    poster: item.poster,
+    framing: item.framing ?? null,
+    overlays: toOverlays(item.texts ?? []),
+  };
+}
+
+// Résumé comparable de ce qui est modifiable (changements non enregistrés en mode édition)
+function snapshotOf(body: string, sport: string | null, eventId: string | null, sound: SoundChoice, items: Draft[]): string {
+  return JSON.stringify({
+    body: body.trim(),
+    sport,
+    eventId,
+    sound: [sound.originalSound, sound.originalVolume, sound.track?.provider ?? null, sound.track?.id ?? null, sound.musicStart, sound.musicVolume],
+    items: items.map((item) => [item.id, item.framing ?? null, item.texts ?? null, item.kind === "image" ? Boolean(item.blob) : Boolean(item.file)]),
+  });
+}
+
+async function fetchBlob(url: string): Promise<Blob> {
+  const response = await fetch(url, { mode: "cors" });
+  if (!response.ok) throw new Error(`Téléchargement impossible (${response.status})`);
+  return response.blob();
 }
 
 const iconProps = {
@@ -117,6 +203,10 @@ export default function Publier() {
   const [eventId, setEventId] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
+  // Mode édition (/publier?edit=<id>) : publication d'origine, état de départ (changements non enregistrés ?)
+  const [editPost, setEditPost] = useState<PostRow | null>(null);
+  const [initialSnapshot, setInitialSnapshot] = useState<string | null>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -154,7 +244,76 @@ export default function Publier() {
         if (error) console.error(`Lecture de mes inscriptions impossible : ${error.message}`);
         else joined = (rows ?? []) as EventRow[];
       }
-      setMyEvents([...mine, ...joined].sort((a, b) => a.starts_at.localeCompare(b.starts_at)));
+      let events = [...mine, ...joined];
+
+      // Mode édition : la publication doit être la mienne, sinon retour à la publication avec un message
+      const editId = new URLSearchParams(window.location.search).get("edit");
+      if (editId) {
+        const { data: row, error: readError } = await supabase.from("posts").select(POST_COLUMNS).eq("id", editId).maybeSingle();
+        const post = row as PostRow | null;
+        if (readError || !post) {
+          if (readError) console.error(`Lecture de la publication impossible : ${readError.message}`);
+          router.replace("/accueil");
+          return;
+        }
+        if (post.author_id !== uid) {
+          router.replace(`/publication/${encodeURIComponent(editId)}?refus=1`);
+          return;
+        }
+        // Événement lié déjà passé : ajouté à la liste pour rester visible et choisi
+        if (post.event_id && !events.some((e) => e.id === post.event_id)) {
+          const { data: linked } = await supabase.from("events").select(EVENT_COLUMNS).eq("id", post.event_id).maybeSingle();
+          if (linked) events = [...events, linked as EventRow];
+        }
+        const drafts = postMedia(post).map((m): Draft =>
+          m.type === "image"
+            ? {
+                id: crypto.randomUUID(),
+                kind: "image",
+                original: null,
+                base: null,
+                // Photo modifiée dans l'éditeur : on repart de sa photo de base (non recadrée, sans texte)
+                basePreview: m.source ?? m.url,
+                blob: null,
+                preview: m.url,
+                framing: m.source && m.framing ? m.framing : undefined,
+                texts: m.source && m.overlays ? fromOverlays(m.overlays, crypto.randomUUID()) : undefined,
+                remote: { url: m.url, source: m.source ?? null, alt: m.alt ?? "" },
+              }
+            : {
+                id: crypto.randomUUID(),
+                kind: "video",
+                file: null,
+                preview: m.url,
+                duration: m.duration_s ?? 0,
+                aspect: m.framing?.aspect ?? null,
+                poster: null,
+                posterPreview: m.poster ?? null,
+                framing: m.framing ?? undefined,
+                texts: m.overlays ? fromOverlays(m.overlays, crypto.randomUUID()) : undefined,
+                remote: { url: m.url, poster: m.poster ?? null, duration: m.duration_s ?? 0 },
+              }
+        );
+        const sound = postSound(post);
+        const track = sound.trackId ? await (sound.provider === "epidemic" ? loadEpidemicTrack(sound.trackId) : loadTrack(sound.trackId)) : null;
+        const choice: SoundChoice = {
+          originalSound: sound.originalSound,
+          originalVolume: sound.originalVolume,
+          track,
+          musicStart: sound.start,
+          musicVolume: sound.musicVolume,
+        };
+        itemsRef.current = drafts;
+        setItems(drafts);
+        setBody(post.body ?? "");
+        setSport(post.sport);
+        setEventId(post.event_id);
+        setSoundChoice(choice);
+        setEditPost(post);
+        setInitialSnapshot(snapshotOf(post.body ?? "", post.sport, post.event_id, choice, drafts));
+      }
+
+      setMyEvents(events.sort((a, b) => a.starts_at.localeCompare(b.starts_at)));
       setReady(true);
     });
   }, [router]);
@@ -167,16 +326,19 @@ export default function Publier() {
     return () => itemsRef.current.forEach(revokeDraft);
   }, []);
 
-  // Envoi en cours : le navigateur demande une confirmation avant de quitter la page
+  // Changements non enregistrés (mode édition) : comparés à l'état de départ
+  const dirty = editPost !== null && initialSnapshot !== null && snapshotOf(body, sport, eventId, soundChoice, items) !== initialSnapshot;
+
+  // Envoi en cours ou modifications non enregistrées : le navigateur demande une confirmation avant de quitter
   useEffect(() => {
-    if (!publishing) return;
+    if (!publishing && !dirty) return;
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = t("publish.leaveWarning");
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [publishing, t]);
+  }, [publishing, dirty, t]);
 
   // Sports : les miens d'abord, puis tous les autres
   const sports = useMemo(() => {
@@ -304,12 +466,17 @@ export default function Publier() {
     try {
       // Texte dessiné dans le même canvas, à la résolution réelle de l'image finale
       const overlay = texts.length > 0 ? (ctx: CanvasRenderingContext2D, W: number, H: number) => drawTextBlocks(ctx, texts, W, H) : undefined;
-      const blob = await renderFramedPhoto(item.original, framing, overlay).catch(() => renderFramedPhoto(item.base, framing, overlay));
+      // Photo déjà en ligne : sa photo de base est téléchargée (le Storage répond avec les en-têtes CORS)
+      const source = item.original ?? item.base ?? (await fetchBlob(item.basePreview));
+      const blob = await renderFramedPhoto(source, framing, overlay).catch(() =>
+        item.base ? renderFramedPhoto(item.base, framing, overlay) : Promise.reject(new Error("Photo illisible"))
+      );
       const preview = URL.createObjectURL(blob);
       updateItem(item.id, (d) => {
         if (d.kind !== "image") return d;
-        if (d.preview !== d.basePreview) URL.revokeObjectURL(d.preview);
-        return { ...d, blob, preview, framing, texts };
+        if (d.preview !== d.basePreview) revokeUrl(d.preview);
+        // Elle devient un nouveau fichier (l'ancien sera retiré du Storage après l'enregistrement)
+        return { ...d, original: d.original ?? source, base: d.base ?? source, blob, preview, framing, texts, remote: undefined };
       });
       setEditingId(null);
     } catch (err) {
@@ -318,6 +485,16 @@ export default function Publier() {
       setEditingId(null);
     }
     setEditBusy(false);
+  }
+
+  function moveItem(id: string, delta: -1 | 1) {
+    const list = [...itemsRef.current];
+    const from = list.findIndex((item) => item.id === id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= list.length) return;
+    [list[from], list[to]] = [list[to], list[from]];
+    itemsRef.current = list;
+    setItems(list);
   }
 
   function removeItem(draft: Draft) {
@@ -347,18 +524,7 @@ export default function Publier() {
         media = await uploadPostMedia(
           supabase,
           me.id,
-          items.map((item) =>
-            item.kind === "image"
-              ? { kind: "image" as const, blob: item.blob, alt: textAlt(item.texts) }
-              : {
-                  kind: "video" as const,
-                  file: item.file,
-                  duration: item.duration,
-                  poster: item.poster,
-                  framing: item.framing ?? null,
-                  overlays: toOverlays(item.texts ?? []),
-                }
-          ),
+          items.map(toMediaDraft),
           (done) => setUploadProgress({ done, total })
         );
       } catch (err) {
@@ -372,8 +538,7 @@ export default function Publier() {
     const { track } = soundChoice;
     const maxStart = Math.max(0, Math.floor((track?.duration_s ?? 0) - MUSIC_CLIP_SECONDS));
     const hasVideo = media.some((m) => m.type === "video");
-    const { data: created, error: insertError } = await supabase.from("posts").insert({
-      author_id: me.id,
+    const columns = {
       body: body.trim(),
       media,
       ...legacyColumns(media),
@@ -387,7 +552,28 @@ export default function Publier() {
       original_volume: hasVideo ? soundChoice.originalVolume : 1,
       sport,
       event_id: eventId,
-    }).select("id").single();
+    };
+
+    // Modification : UPDATE (likes, commentaires et vues restent attachés à la même publication), puis seulement
+    // ensuite suppression des fichiers retirés. En cas d'échec : on retire les nouveaux fichiers envoyés.
+    if (editPost) {
+      const uploaded = media.filter((m, i) => items[i] && toMediaDraft(items[i]).kind !== "existing");
+      const { data: updated, error: updateError } = await supabase.from("posts").update(columns).eq("id", editPost.id).select("id");
+      if (updateError || !updated || updated.length === 0) {
+        console.error(updateError ? `Modification impossible : ${updateError.message} (code ${updateError.code})` : "Modification impossible : aucune ligne modifiée");
+        await removeMediaFiles(supabase, uploaded);
+        fail(updateError ? t(postErrorKey(updateError)) : t("post.errorGeneric"));
+        return;
+      }
+      await removeFiles(supabase, removedFiles(postFiles(editPost), mediaFiles(media)));
+      const before = postSound(editPost);
+      if (track?.provider === "epidemic" && !(before.provider === "epidemic" && before.trackId === track.id)) reportEpidemicUsage(editPost.id);
+      setInitialSnapshot(snapshotOf(body, sport, eventId, soundChoice, items)); // plus de changements en attente
+      router.replace(`/publication/${encodeURIComponent(editPost.id)}?modifie=1`);
+      return;
+    }
+
+    const { data: created, error: insertError } = await supabase.from("posts").insert({ author_id: me.id, ...columns }).select("id").single();
     if (insertError) {
       console.error(`Publication impossible : ${insertError.message} (code ${insertError.code})`);
       // Fichiers déjà envoyés mais publication refusée : on ne laisse pas de fichiers orphelins
@@ -405,6 +591,11 @@ export default function Publier() {
   }
 
   const name = me.displayName || me.username || t("event.member");
+
+  function leave() {
+    if (window.history.length > 1) router.back();
+    else router.push(editPost ? `/publication/${encodeURIComponent(editPost.id)}` : "/accueil");
+  }
   const chip = (selected: boolean) =>
     `flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-2 px-4 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink ${
       selected ? "border-accent-ink bg-accent-ink/10 text-accent-ink" : "border-line bg-surface hover:border-accent-ink"
@@ -417,7 +608,7 @@ export default function Publier() {
         <header className="grid grid-cols-[2.75rem_1fr_auto] items-center gap-2">
           <button
             type="button"
-            onClick={() => (window.history.length > 1 ? router.back() : router.push("/accueil"))}
+            onClick={() => (dirty ? setDiscardOpen(true) : leave())}
             disabled={publishing}
             aria-label={t("common.back")}
             className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-surface transition-colors hover:border-accent-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink disabled:opacity-60"
@@ -426,7 +617,7 @@ export default function Publier() {
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
-          <h1 className="text-center text-lg font-bold">{t("publish.title")}</h1>
+          <h1 className="text-center text-lg font-bold">{editPost ? t("publish.editTitle") : t("publish.title")}</h1>
           <button
             type="button"
             onClick={publish}
@@ -434,7 +625,7 @@ export default function Publier() {
             aria-busy={publishing}
             className="min-h-11 rounded-full bg-accent px-5 text-sm font-bold text-on-accent transition-opacity disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
           >
-            {publishing ? t("publish.publishing") : t("create.post")}
+            {editPost ? (publishing ? t("publish.saving") : t("publish.save")) : publishing ? t("publish.publishing") : t("create.post")}
           </button>
         </header>
 
@@ -507,6 +698,33 @@ export default function Publier() {
                     </svg>
                     {t("editor.edit")}
                   </button>
+                  {items.length > 1 && (
+                    // Réordonner : vers la gauche / la droite (en haut au centre)
+                    <span className="absolute left-1/2 top-2 z-10 flex -translate-x-1/2 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => moveItem(item.id, -1)}
+                        disabled={publishing || index === 0}
+                        aria-label={t("publish.moveLeft").replace("{n}", String(index + 1))}
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-30 focus-visible:outline-2 focus-visible:outline-white"
+                      >
+                        <svg {...iconProps} className="h-4 w-4" strokeWidth={2.5}>
+                          <path d="M15 18l-6-6 6-6" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveItem(item.id, 1)}
+                        disabled={publishing || index === items.length - 1}
+                        aria-label={t("publish.moveRight").replace("{n}", String(index + 1))}
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-30 focus-visible:outline-2 focus-visible:outline-white"
+                      >
+                        <svg {...iconProps} className="h-4 w-4" strokeWidth={2.5}>
+                          <path d="M9 18l6-6-6-6" />
+                        </svg>
+                      </button>
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeItem(item)}
@@ -693,6 +911,19 @@ export default function Publier() {
           />
         );
       })()}
+      <ConfirmDialog
+        open={discardOpen}
+        title={t("publish.discardTitle")}
+        description={t("publish.discardText")}
+        confirmLabel={t("publish.discard")}
+        danger
+        onConfirm={() => {
+          setDiscardOpen(false);
+          setInitialSnapshot(null); // plus d'avertissement en quittant
+          leave();
+        }}
+        onClose={() => setDiscardOpen(false)}
+      />
     </main>
   );
 }

@@ -77,6 +77,19 @@ function Publication() {
     };
   }, []);
 
+  // Retour de /publier?edit= : refus (publication d'une autre personne) ou modifications enregistrées.
+  // Dans un rappel (pas pendant le rendu), puis l'adresse est nettoyée.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const message = params.get("refus") ? t("publish.notYours") : params.get("modifie") ? t("publish.saved") : "";
+    if (!message) return;
+    const timer = setTimeout(() => {
+      window.history.replaceState(window.history.state, "", window.location.pathname);
+      showToast(message);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [showToast, t]);
+
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {

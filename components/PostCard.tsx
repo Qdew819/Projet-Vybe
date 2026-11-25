@@ -5,6 +5,7 @@ import { useCloseDialogOnHide } from "../lib/useCloseDialogOnHide";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Avatar from "./Avatar";
 import ConfirmDialog from "./ConfirmDialog";
 import MediaCarousel from "./MediaCarousel";
@@ -20,7 +21,7 @@ import { useLanguage, useT } from "../lib/i18n";
 import { musicSource, postSound, useMusicTrack } from "../lib/music";
 import { deletePost, postMedia, setLike, type PostRow, type PostStats } from "../lib/posts";
 import { initialsOf } from "../lib/profile";
-import { postSharePath } from "../lib/share";
+import { absoluteUrl, postSharePath } from "../lib/share";
 import { sportImage } from "../lib/sportImages";
 import { createClient } from "../lib/supabase/client";
 import { useMusicPlayer, useSoundOn, useVisible } from "../lib/sound";
@@ -72,6 +73,7 @@ export default function PostCard({
   const [likes, setLikes] = useState(stats.likes);
   const [likeBusy, setLikeBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmError, setConfirmError] = useState("");
@@ -184,6 +186,7 @@ export default function PostCard({
           )}
           <p className="text-xs text-muted">
             <time dateTime={post.created_at}>{relativeTime(post.created_at, language, new Date(now))}</time>
+            {post.edited_at && <span> · {t("post.edited")}</span>}
           </p>
           {track && <MusicCredit track={track} />}
         </div>
@@ -191,7 +194,10 @@ export default function PostCard({
         {audible && <SoundButton className="text-muted hover:text-foreground" />}
         <button
           type="button"
-          onClick={() => setMenuOpen(true)}
+          onClick={(e) => {
+            setMenuAnchor(e.currentTarget);
+            setMenuOpen(true);
+          }}
           aria-haspopup="dialog"
           aria-label={t("post.menu")}
           className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent-ink"
@@ -312,6 +318,9 @@ export default function PostCard({
         open={menuOpen}
         mine={mine}
         handle={handle || name}
+        postId={post.id}
+        anchor={menuAnchor}
+        onMessage={onMessage}
         onClose={() => setMenuOpen(false)}
         onDelete={() => {
           setConfirmError("");
@@ -492,49 +501,90 @@ function Action({
   );
 }
 
-// Menu « ⋯ » : feuille qui monte du bas (Supprimer pour mes publications, sinon Signaler et Bloquer).
+// Menu « ⋯ » d'une publication. Feuille qui monte du bas sur téléphone, petit menu déroulant sous le bouton sur
+// ordinateur. Auteur : Modifier, Supprimer, Copier le lien ; sinon : Copier le lien, Signaler, Bloquer ; et Annuler.
 // Exporté : aussi utilisé par le fil de vidéos plein écran (components/videos/ReelItem.tsx)
 export function PostMenu({
   open,
   mine,
   handle,
+  postId,
+  anchor = null,
   onClose,
   onDelete,
   onReport,
   onBlock,
+  onMessage,
 }: {
   open: boolean;
   mine: boolean;
   handle: string;
+  postId: string;
+  anchor?: HTMLElement | null; // bouton « ⋯ » (position du menu déroulant sur ordinateur)
   onClose: () => void;
   onDelete: () => void;
   onReport: () => void;
   onBlock: () => void;
+  onMessage: (text: string) => void;
 }) {
   const t = useT();
+  const router = useRouter();
   const mounted = useMounted();
   const dialogRef = useRef<HTMLDialogElement>(null);
   useCloseDialogOnHide(dialogRef);
   const firstRef = useRef<HTMLButtonElement>(null);
+  const [dropdown, setDropdown] = useState<{ top: number; right: number } | null>(null);
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open && !dialog.open) {
+      // Ordinateur (écran large et souris) : menu déroulant sous le bouton
+      const rect = anchor?.getBoundingClientRect();
+      const desktop = window.matchMedia("(min-width: 768px) and (pointer: fine)").matches;
+      setDropdown(desktop && rect ? { top: Math.min(rect.bottom + 6, window.innerHeight - 260), right: Math.max(8, window.innerWidth - rect.right) } : null);
       dialog.showModal();
       firstRef.current?.focus();
     } else if (!open && dialog.open) {
       dialog.close();
     }
-  }, [open, mounted]);
+  }, [open, mounted, anchor]);
 
   if (!mounted) return null;
-  const option =
-    "flex min-h-14 w-full items-center gap-3 rounded-2xl border border-line bg-surface px-4 text-left font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2";
+  const option = dropdown
+    ? "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-bold transition-colors hover:bg-surface focus-visible:outline-2 focus-visible:-outline-offset-2"
+    : "flex min-h-14 w-full items-center gap-3 rounded-2xl border border-line bg-surface px-4 text-left font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2";
   const choose = (action: () => void) => {
     dialogRef.current?.close();
     action();
   };
+
+  async function copyLink() {
+    const url = absoluteUrl(postSharePath(postId));
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Ancien navigateur : copie par une zone de texte temporaire
+      const field = document.createElement("textarea");
+      field.value = url;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      document.execCommand("copy");
+      field.remove();
+    }
+    onMessage(t("post.linkCopied"));
+  }
+
+  const linkIcon = (
+    <svg {...iconProps} className="h-5 w-5">
+      <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+      <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+    </svg>
+  );
+
   return createPortal(
     <dialog
       ref={dialogRef}
@@ -543,20 +593,52 @@ export function PostMenu({
       onClick={(e) => {
         if (e.target === e.currentTarget) e.currentTarget.close();
       }}
-      className="mx-auto mb-0 mt-auto w-full max-w-[500px] rounded-t-3xl border border-b-0 border-line bg-background p-0 text-foreground backdrop:bg-black/70"
+      style={dropdown ? { position: "fixed", inset: "auto", top: dropdown.top, right: dropdown.right, margin: 0 } : undefined}
+      className={
+        dropdown
+          ? "w-60 rounded-2xl border border-line bg-background p-0 text-foreground shadow-xl backdrop:bg-transparent"
+          : "mx-auto mb-0 mt-auto w-full max-w-[500px] rounded-t-3xl border border-b-0 border-line bg-background p-0 text-foreground backdrop:bg-black/70"
+      }
     >
-      <div className="flex flex-col gap-3 px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-3">
-        <div aria-hidden="true" className="mx-auto h-1.5 w-10 rounded-full bg-line" />
+      <div className={dropdown ? "flex flex-col gap-0.5 p-1.5" : "flex flex-col gap-3 px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-3"}>
+        {!dropdown && <div aria-hidden="true" className="mx-auto h-1.5 w-10 rounded-full bg-line" />}
         {mine ? (
-          <button ref={firstRef} type="button" onClick={() => choose(onDelete)} className={`${option} text-danger hover:border-danger focus-visible:outline-danger`}>
-            <svg {...iconProps} className="h-5 w-5">
-              <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
-            </svg>
-            {t("post.delete")}
-          </button>
+          <>
+            <button
+              ref={firstRef}
+              type="button"
+              onClick={() => choose(() => router.push(`/publier?edit=${encodeURIComponent(postId)}`))}
+              className={`${option} hover:border-accent-ink focus-visible:outline-accent-ink`}
+            >
+              <svg {...iconProps} className="h-5 w-5">
+                <path d="M4 20h4L19 9l-4-4L4 16v4z" />
+                <path d="M13.5 6.5l4 4" />
+              </svg>
+              {t("post.edit")}
+            </button>
+            <button type="button" onClick={() => choose(onDelete)} className={`${option} text-danger hover:border-danger focus-visible:outline-danger`}>
+              <svg {...iconProps} className="h-5 w-5">
+                <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+              </svg>
+              {t("post.delete")}
+            </button>
+            <button type="button" onClick={() => choose(() => void copyLink())} className={`${option} hover:border-accent-ink focus-visible:outline-accent-ink`}>
+              {linkIcon}
+              {t("post.copyLink")}
+            </button>
+          </>
         ) : (
           <>
-            <button ref={firstRef} type="button" onClick={() => choose(onReport)} className={`${option} hover:border-accent-ink focus-visible:outline-accent-ink`}>
+            <button
+              ref={firstRef}
+              type="button"
+              onClick={() => choose(() => void copyLink())}
+              className={`${option} hover:border-accent-ink focus-visible:outline-accent-ink`}
+            >
+              {linkIcon}
+              {t("post.copyLink")}
+            </button>
+            <button type="button" onClick={() => choose(onReport)} className={`${option} hover:border-accent-ink focus-visible:outline-accent-ink`}>
               <svg {...iconProps} className="h-5 w-5">
                 <path d="M5 21V4h11l-1.5 4L16 12H5" />
               </svg>
@@ -574,7 +656,11 @@ export function PostMenu({
         <button
           type="button"
           onClick={() => dialogRef.current?.close()}
-          className="min-h-12 w-full rounded-2xl text-sm font-bold text-muted transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
+          className={
+            dropdown
+              ? "min-h-10 w-full rounded-xl text-sm font-bold text-muted transition-colors hover:bg-surface hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-ink"
+              : "min-h-12 w-full rounded-2xl text-sm font-bold text-muted transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
+          }
         >
           {t("common.cancel")}
         </button>

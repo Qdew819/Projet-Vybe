@@ -712,6 +712,8 @@ function LiveReel({
         open={menuOpen}
         mine={mine}
         handle={handle}
+        postId={post.id}
+        onMessage={onMessage}
         onClose={() => setMenuOpen(false)}
         onDelete={() => {
           setConfirmError("");
