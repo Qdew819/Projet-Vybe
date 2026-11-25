@@ -300,11 +300,13 @@ export default function ImageCarousel({
       {multiple && (
         <div className="mt-2 flex justify-center gap-1.5" aria-live="polite">
           <span className="sr-only">{alt(active)}</span>
-          {images.map((src, index) => (
+          {visibleDots(count, active).map(({ index, small }) => (
             <span
-              key={`${index}-${src}`}
+              key={index}
               aria-hidden="true"
-              className={`h-1.5 w-1.5 rounded-full transition-colors ${index === active ? "bg-[#39ff14]" : "bg-muted"}`}
+              className={`rounded-full transition-all duration-200 ${small ? "h-1 w-1" : "h-1.5 w-1.5"} ${
+                index === active ? "bg-[#39ff14]" : "bg-muted"
+              }`}
             />
           ))}
         </div>
@@ -314,6 +316,20 @@ export default function ImageCarousel({
       {zoom && createPortal(<ZoomLayer zoom={zoom} />, document.body)}
     </div>
   );
+}
+
+// Points sous la photo : tous jusqu'à 5 photos ; au-delà, une fenêtre de 5 points qui se décale avec la photo
+// active (comme Instagram), les points du bord plus petits quand il reste des photos de ce côté-là
+const MAX_DOTS = 5;
+function visibleDots(count: number, active: number): { index: number; small: boolean }[] {
+  if (count <= MAX_DOTS) return Array.from({ length: count }, (_, index) => ({ index, small: false }));
+  const first = Math.max(0, Math.min(active - Math.floor(MAX_DOTS / 2), count - MAX_DOTS));
+  const last = first + MAX_DOTS - 1;
+  return Array.from({ length: MAX_DOTS }, (_, i) => {
+    const index = first + i;
+    const small = (index === first && first > 0) || (index === last && last < count - 1);
+    return { index, small: small && index !== active };
+  });
 }
 
 // Copie de la photo à sa position exacte à l'écran, agrandie autour du point entre les doigts et déplacée avec eux.

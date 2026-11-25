@@ -8,7 +8,10 @@ import type { MessageKey } from "./i18n";
 // Les règles d'accès de la base (comptes privés, blocages) filtrent déjà ce que chacun peut voir.
 
 export const POST_BODY_MAX = 500;
-export const POST_MAX_IMAGES = 4;
+// Nombre maximum de photos par publication (la même limite est vérifiée par la base). Seule source de cette valeur.
+export const MAX_POST_IMAGES = 15;
+// Envois de photos simultanés au moment de publier
+const IMAGE_UPLOAD_CONCURRENCY = 3;
 export const COMMENT_BODY_MAX = 300;
 export const FEED_PAGE_SIZE = 10;
 export const POST_BUCKET = "posts";
@@ -230,6 +233,42 @@ export async function uploadPostImage(supabase: SupabaseClient, userId: string, 
   const { error } = await supabase.storage.from(POST_BUCKET).upload(path, blob, { contentType: "image/jpeg", cacheControl: "3600" });
   if (error) throw error;
   return { path, url: supabase.storage.from(POST_BUCKET).getPublicUrl(path).data.publicUrl };
+}
+
+// Envoie toutes les photos, 3 à la fois, en gardant l'ordre choisi. onProgress(nombre déjà envoyées).
+// Si une seule échoue : plus aucun nouvel envoi, les photos déjà envoyées sont supprimées et l'erreur est relancée
+// (la publication n'est alors pas créée : jamais de publication à moitié vide).
+export async function uploadPostImages(
+  supabase: SupabaseClient,
+  userId: string,
+  blobs: Blob[],
+  onProgress?: (done: number) => void
+): Promise<{ path: string; url: string }[]> {
+  const results: ({ path: string; url: string } | undefined)[] = new Array(blobs.length);
+  let next = 0;
+  let done = 0;
+  let failure: unknown = null;
+
+  async function worker() {
+    while (failure === null && next < blobs.length) {
+      const index = next++;
+      try {
+        results[index] = await uploadPostImage(supabase, userId, blobs[index]);
+        done += 1;
+        onProgress?.(done);
+      } catch (err) {
+        if (failure === null) failure = err;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(IMAGE_UPLOAD_CONCURRENCY, blobs.length) }, worker));
+  const uploaded = results.filter((r): r is { path: string; url: string } => Boolean(r));
+  if (failure !== null) {
+    await removePostImages(supabase, uploaded.map((u) => u.path));
+    throw failure;
+  }
+  return uploaded;
 }
 
 // Adresse publique → chemin dans un espace de stockage (null si l'adresse n'en vient pas)

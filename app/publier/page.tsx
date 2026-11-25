@@ -11,13 +11,13 @@ import {
   POST_BODY_MAX,
   POST_IMAGE_ACCEPT,
   POST_IMAGE_MAX_INPUT_BYTES,
-  POST_MAX_IMAGES,
+  MAX_POST_IMAGES,
   compressPostImage,
   isAcceptedPostImage,
   postErrorKey,
   removePostImages,
   removeVideoFiles,
-  uploadPostImage,
+  uploadPostImages,
 } from "../../lib/posts";
 import { initialsOf } from "../../lib/profile";
 import { createClient } from "../../lib/supabase/client";
@@ -55,7 +55,7 @@ const iconProps = {
   strokeLinejoin: "round" as const,
 };
 
-// Nouvelle publication (plein écran) : texte, jusqu'à 4 photos OU une vidéo de 30 s, sport et événement facultatifs
+// Nouvelle publication (plein écran) : texte, jusqu'à MAX_POST_IMAGES (15) photos OU une vidéo de 30 s, sport et événement facultatifs
 export default function Publier() {
   const router = useRouter();
   const t = useT();
@@ -75,6 +75,7 @@ export default function Publier() {
   const [videoPreparing, setVideoPreparing] = useState(false);
   const [videoError, setVideoError] = useState("");
   const [progress, setProgress] = useState<number | null>(null); // envoi de la vidéo, de 0 à 1
+  const [photoProgress, setPhotoProgress] = useState<{ done: number; total: number } | null>(null); // envoi des photos
   const videoRef = useRef<Video | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -165,10 +166,11 @@ export default function Publier() {
   async function addPhotos(files: FileList | null) {
     if (!files) return;
     setPhotoError("");
-    const room = POST_MAX_IMAGES - photos.length;
+    // Plus de photos que la place restante : on garde les premières choisies
+    const room = MAX_POST_IMAGES - photos.length - preparing;
     const chosen = Array.from(files);
-    if (chosen.length > room) setPhotoError(t("publish.photoMax"));
-    for (const file of chosen.slice(0, room)) {
+    if (chosen.length > room) setPhotoError(t("publish.photoMax").replace("{n}", String(MAX_POST_IMAGES)));
+    for (const file of chosen.slice(0, Math.max(0, room))) {
       if (!isAcceptedPostImage(file) || file.size > POST_IMAGE_MAX_INPUT_BYTES) {
         setPhotoError(t("publish.photoType"));
         continue;
@@ -177,7 +179,7 @@ export default function Publier() {
       try {
         const blob = await compressPostImage(file);
         setPhotos((current) =>
-          current.length >= POST_MAX_IMAGES ? current : [...current, { id: crypto.randomUUID(), blob, preview: URL.createObjectURL(blob) }]
+          current.length >= MAX_POST_IMAGES ? current : [...current, { id: crypto.randomUUID(), blob, preview: URL.createObjectURL(blob) }]
         );
       } catch (err) {
         console.error("Préparation de la photo impossible :", err);
@@ -243,16 +245,24 @@ export default function Publier() {
       return;
     }
 
-    // 1. Photos
-    const uploaded: { path: string; url: string }[] = [];
-    try {
-      for (const photo of photos) uploaded.push(await uploadPostImage(supabase, me.id, photo.blob));
-    } catch (err) {
-      console.error("Envoi des photos impossible :", err);
-      await removePostImages(supabase, uploaded.map((u) => u.path));
-      setError(t("post.errorGeneric"));
-      setPublishing(false);
-      return;
+    // 1. Photos : 3 à la fois, dans l'ordre choisi. Une seule échoue → tout est retiré, rien n'est publié
+    let uploaded: { path: string; url: string }[] = [];
+    if (photos.length > 0) {
+      setPhotoProgress({ done: 0, total: photos.length });
+      try {
+        uploaded = await uploadPostImages(
+          supabase,
+          me.id,
+          photos.map((photo) => photo.blob),
+          (done) => setPhotoProgress({ done, total: photos.length })
+        );
+      } catch (err) {
+        console.error("Envoi des photos impossible :", err);
+        setError(t("publish.photoUploadError"));
+        setPhotoProgress(null);
+        setPublishing(false);
+        return;
+      }
     }
 
     // 2. Publication
@@ -268,6 +278,7 @@ export default function Publier() {
       // Photos déjà envoyées mais publication refusée : on ne laisse pas de fichiers orphelins
       await removePostImages(supabase, uploaded.map((u) => u.path));
       setError(t(postErrorKey(insertError)));
+      setPhotoProgress(null);
       setPublishing(false);
       return;
     }
@@ -451,6 +462,30 @@ export default function Publier() {
             </div>
           )}
 
+          {/* Progression de l'envoi des photos : « Envoi 3/15… » */}
+          {photoProgress && (
+            <div className="mb-3">
+              <div
+                role="progressbar"
+                aria-label={t("publish.uploadLabel")}
+                aria-valuemin={0}
+                aria-valuemax={photoProgress.total}
+                aria-valuenow={photoProgress.done}
+                className="h-2 overflow-hidden rounded-full bg-line"
+              >
+                <div
+                  className="h-full rounded-full bg-accent transition-[width] duration-200"
+                  style={{ width: `${Math.round((photoProgress.done / photoProgress.total) * 100)}%` }}
+                />
+              </div>
+              <p aria-live="polite" className="mt-1 text-xs font-semibold text-muted">
+                {t("publish.uploadingPhotos")
+                  .replace("{n}", String(Math.min(photoProgress.total, photoProgress.done + 1)))
+                  .replace("{total}", String(photoProgress.total))}
+              </p>
+            </div>
+          )}
+
           {/* Photos et vidéo sont exclusives : choisir l'une désactive l'autre */}
           {/* Champs de fichier cachés, ouverts par les boutons ci-dessous (plus fiable qu'un <label> sur mobile) */}
           <input
@@ -479,24 +514,23 @@ export default function Publier() {
             className="hidden"
           />
           <div className="flex gap-2">
-            {photos.length < POST_MAX_IMAGES && (
-              <button
-                type="button"
-                onClick={() => photoInputRef.current?.click()}
-                disabled={publishing || video !== null || videoPreparing}
-                className={pickerButton}
-              >
-                <svg {...iconProps} className="h-5 w-5 shrink-0" strokeWidth={2}>
-                  <rect x="3" y="5" width="18" height="14" rx="2" />
-                  <circle cx="9" cy="10" r="1.8" />
-                  <path d="M21 16l-5-5-8 8" />
-                </svg>
-                {preparing > 0 ? t("eventForm.photoPreparing") : t("eventForm.addPhoto")}
-                <span className="font-semibold text-muted">
-                  ({photos.length}/{POST_MAX_IMAGES})
-                </span>
-              </button>
-            )}
+            {/* Désactivé à 15 photos (ou quand une vidéo est choisie) */}
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={publishing || video !== null || videoPreparing || photos.length + preparing >= MAX_POST_IMAGES}
+              className={pickerButton}
+            >
+              <svg {...iconProps} className="h-5 w-5 shrink-0" strokeWidth={2}>
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <circle cx="9" cy="10" r="1.8" />
+                <path d="M21 16l-5-5-8 8" />
+              </svg>
+              {preparing > 0 ? t("eventForm.photoPreparing") : t("eventForm.addPhoto")}
+              <span className="font-semibold text-muted">
+                ({photos.length}/{MAX_POST_IMAGES})
+              </span>
+            </button>
             {!video && (
               <button
                 type="button"
