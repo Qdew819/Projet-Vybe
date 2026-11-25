@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { fetchEpidemicStream, forgetEpidemicStream, type MusicSource } from "./music";
 
 // Son des publications (vidéos et musique), partagé par toute la page.
 //
@@ -48,6 +49,8 @@ function soundWanted(): boolean {
 type AudioContextClass = typeof AudioContext;
 let context: AudioContext | null = null;
 const gains = new WeakMap<HTMLMediaElement, GainNode>();
+// Éléments lus en HLS natif depuis un autre domaine : jamais reliés à Web Audio (WebKit y rendrait du silence)
+const directElements = new WeakSet<HTMLMediaElement>();
 let gestureListening = false;
 
 function audioRunning(): boolean {
@@ -111,7 +114,7 @@ export function toggleSound(): void {
 // Volume d'un élément audio/vidéo (0 à 1), appliqué par un GainNode (seul moyen fiable sur iPhone)
 export function setMediaVolume(element: HTMLMediaElement, volume: number): void {
   const value = Math.max(0, Math.min(1, volume));
-  if (!context) {
+  if (!context || directElements.has(element)) {
     element.volume = value;
     return;
   }
@@ -181,77 +184,140 @@ export function useVisible(ref: RefObject<Element | null>, ratio = SOUND_VISIBLE
 
 export const MUSIC_CLIP_SECONDS = 30;
 
+// Lecture HLS d'un morceau Epidemic Sound (URL signée demandée à notre serveur au moment de jouer).
+// hls.js n'est pas installé : on utilise la lecture HLS native du navigateur (Safari sur Mac et iPhone, et les
+// navigateurs qui la proposent). Ailleurs, le morceau ne joue pas (la publication s'affiche sans musique).
+// Le flux vient d'un autre domaine : il n'est pas relié à Web Audio (WebKit rendrait du silence), son volume
+// passe par .volume.
+async function attachEpidemic(audio: HTMLAudioElement, id: string): Promise<boolean> {
+  const url = await fetchEpidemicStream(id);
+  if (!url) return false;
+  if (!audio.canPlayType("application/vnd.apple.mpegurl")) {
+    console.warn("Lecture HLS indisponible dans ce navigateur : musique Epidemic Sound ignorée");
+    return false;
+  }
+  directElements.add(audio);
+  audio.src = url;
+  return true;
+}
+
+type Player = { audio: HTMLAudioElement; ready: boolean; failed: boolean };
+
 // Joue la musique à partir de start, en boucle sur 30 s, au volume donné, tant que playing est vrai.
 // Un seul élément <audio> par publication, créé hors du rendu ; pause dès que playing devient faux.
+// Morceau Epidemic Sound : l'URL de lecture est demandée seulement quand il faut jouer (elle expire).
+// En cas d'échec (service indisponible, URL refusée…), rien ne joue et rien ne plante.
 export function useMusicPlayer({
   ownerKey,
-  url,
+  source,
   start,
   volume,
   playing,
 }: {
   ownerKey: string;
-  url: string | null;
+  source: MusicSource | null;
   start: number;
   volume: number;
   playing: boolean;
 }): void {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playerRef = useRef<Player | null>(null);
+  const sourceKey = source ? (source.kind === "file" ? `file:${source.url}` : `epidemic:${source.id}`) : null;
 
   useEffect(() => {
-    if (!url) return;
+    if (!source) return;
     const audio = new Audio();
     audio.crossOrigin = "anonymous";
     audio.preload = "none";
-    audio.src = url;
-    audioRef.current = audio;
+    if (source.kind === "file") audio.src = source.url;
+    const player: Player = { audio, ready: source.kind === "file", failed: false };
+    playerRef.current = player;
+    const onError = () => {
+      // URL expirée ou refusée : la prochaine lecture redemandera une URL neuve
+      if (source.kind === "epidemic") {
+        forgetEpidemicStream(source.id);
+        player.ready = false;
+      }
+    };
+    audio.addEventListener("error", onError);
     return () => {
+      audio.removeEventListener("error", onError);
       audio.pause();
       audio.removeAttribute("src");
       audio.load();
-      if (audioRef.current === audio) audioRef.current = null;
+      if (playerRef.current === player) playerRef.current = null;
     };
-  }, [url]);
+    // sourceKey résume source (évite de recréer l'élément à chaque rendu)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey]);
 
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    const player = playerRef.current;
+    if (!player) return;
+    const { audio } = player;
     if (!playing) {
       audio.pause();
       return;
     }
-    const from = Math.max(0, start);
-    const loopEnd = () => Math.min(from + MUSIC_CLIP_SECONDS, Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : Infinity);
-    const seekToStart = () => {
-      try {
-        audio.currentTime = from;
-      } catch {
-        // Métadonnées pas encore lues : on réessaie à loadedmetadata
+    let cancelled = false;
+    let teardown: (() => void) | null = null;
+
+    const begin = () => {
+      const from = Math.max(0, start);
+      const loopEnd = () =>
+        Math.min(from + MUSIC_CLIP_SECONDS, Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : Infinity);
+      const seekToStart = () => {
+        try {
+          audio.currentTime = from;
+        } catch {
+          // Métadonnées pas encore lues : on réessaie à loadedmetadata
+        }
+      };
+      const onTime = () => {
+        if (audio.currentTime >= loopEnd() - 0.05 || audio.currentTime < from - 0.5) seekToStart();
+      };
+      const onEnded = () => {
+        seekToStart();
+        void audio.play().catch(() => undefined);
+      };
+      audio.addEventListener("timeupdate", onTime);
+      audio.addEventListener("ended", onEnded);
+      if (audio.readyState >= 1) {
+        if (audio.currentTime < from || audio.currentTime >= loopEnd()) seekToStart();
+      } else {
+        audio.addEventListener("loadedmetadata", seekToStart, { once: true });
       }
-    };
-    const onTime = () => {
-      if (audio.currentTime >= loopEnd() - 0.05 || audio.currentTime < from - 0.5) seekToStart();
-    };
-    const onEnded = () => {
-      seekToStart();
+      setMediaVolume(audio, volume);
+      const release = claimSound(ownerKey, () => audio.pause());
       void audio.play().catch(() => undefined);
+      teardown = () => {
+        audio.removeEventListener("timeupdate", onTime);
+        audio.removeEventListener("ended", onEnded);
+        audio.removeEventListener("loadedmetadata", seekToStart);
+        release();
+      };
     };
-    audio.addEventListener("timeupdate", onTime);
-    audio.addEventListener("ended", onEnded);
-    if (audio.readyState >= 1) {
-      if (audio.currentTime < from || audio.currentTime >= loopEnd()) seekToStart();
-    } else {
-      audio.addEventListener("loadedmetadata", seekToStart, { once: true });
+
+    if (player.ready) {
+      begin();
+    } else if (source?.kind === "epidemic" && !player.failed) {
+      void attachEpidemic(audio, source.id).then(
+        (ok) => {
+          if (!ok) player.failed = true;
+          else player.ready = true;
+          if (ok && !cancelled) begin();
+        },
+        () => {
+          player.failed = true;
+        }
+      );
     }
-    setMediaVolume(audio, volume);
-    const release = claimSound(ownerKey, () => audio.pause());
-    void audio.play().catch(() => undefined);
+
     return () => {
-      audio.removeEventListener("timeupdate", onTime);
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("loadedmetadata", seekToStart);
+      cancelled = true;
+      teardown?.();
       audio.pause();
-      release();
     };
-  }, [playing, start, volume, ownerKey, url]);
+    // sourceKey résume source
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, start, volume, ownerKey, sourceKey]);
 }

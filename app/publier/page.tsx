@@ -22,6 +22,7 @@ import {
 import { initialsOf } from "../../lib/profile";
 import { createClient } from "../../lib/supabase/client";
 import { useSportOptions, type SportOption } from "../../lib/sportOptions";
+import { reportEpidemicUsage } from "../../lib/music";
 import { MUSIC_CLIP_SECONDS } from "../../lib/sound";
 import { loadMySports } from "../../lib/userSports";
 import {
@@ -289,19 +290,22 @@ export default function Publier() {
     const { track } = soundChoice;
     const maxStart = Math.max(0, Math.floor((track?.duration_s ?? 0) - MUSIC_CLIP_SECONDS));
     const hasVideo = media.some((m) => m.type === "video");
-    const { error: insertError } = await supabase.from("posts").insert({
+    const { data: created, error: insertError } = await supabase.from("posts").insert({
       author_id: me.id,
       body: body.trim(),
       media,
       ...legacyColumns(media),
-      music_track_id: track?.id ?? null,
+      // Musique : 'vybe' → music_track_id ; 'epidemic' → music_external_id (seul l'identifiant est gardé)
+      ...(track ? { music_provider: track.provider } : {}),
+      music_track_id: track?.provider === "vybe" ? track.id : null,
+      music_external_id: track?.provider === "epidemic" ? track.id : null,
       music_start_s: track ? Math.min(Math.round(soundChoice.musicStart), maxStart) : 0,
       music_volume: track ? soundChoice.musicVolume : 1,
       original_sound: hasVideo ? soundChoice.originalSound : true,
       original_volume: hasVideo ? soundChoice.originalVolume : 1,
       sport,
       event_id: eventId,
-    });
+    }).select("id").single();
     if (insertError) {
       console.error(`Publication impossible : ${insertError.message} (code ${insertError.code})`);
       // Fichiers déjà envoyés mais publication refusée : on ne laisse pas de fichiers orphelins
@@ -309,6 +313,8 @@ export default function Publier() {
       fail(t(postErrorKey(insertError)));
       return;
     }
+    // Epidemic Sound : la publication compte comme un « export » à signaler (côté serveur, sans attendre)
+    if (track?.provider === "epidemic" && created?.id) reportEpidemicUsage(String(created.id));
     router.push("/accueil?publie=1");
   }
 

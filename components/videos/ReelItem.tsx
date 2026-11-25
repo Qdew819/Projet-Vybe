@@ -14,7 +14,7 @@ import { formatEventDate } from "../../lib/events";
 import { followUser, type FollowStatus } from "../../lib/follows";
 import { useLanguage, useT } from "../../lib/i18n";
 import { deletePost, postMedia, setLike, type MediaItem, type PostRow, type PostStats } from "../../lib/posts";
-import { postSound, useMusicTrack } from "../../lib/music";
+import { musicSource, postSound, useMusicTrack } from "../../lib/music";
 import { initialsOf } from "../../lib/profile";
 import { postSharePath } from "../../lib/share";
 import { createClient } from "../../lib/supabase/client";
@@ -182,10 +182,10 @@ function LiveReel({
   const multiple = videos.length > 1;
   // Son de la publication : musique de la bibliothèque Vybe et réglages du son d'origine
   const sound = postSound(post);
-  const track = useMusicTrack(sound.trackId);
+  const track = useMusicTrack(sound.provider, sound.trackId);
   useMusicPlayer({
     ownerKey: post.id,
-    url: track?.audio_url ?? null,
+    source: musicSource(track),
     start: sound.start,
     volume: sound.musicVolume,
     playing: shouldPlay && soundOn && Boolean(track),

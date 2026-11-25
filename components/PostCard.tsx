@@ -17,7 +17,7 @@ import ShareButton from "./ShareButton";
 import { formatEventDate, type EventRow } from "../lib/events";
 import type { Person } from "../lib/follows";
 import { useLanguage, useT } from "../lib/i18n";
-import { postSound, useMusicTrack } from "../lib/music";
+import { musicSource, postSound, useMusicTrack } from "../lib/music";
 import { deletePost, postMedia, setLike, type PostRow, type PostStats } from "../lib/posts";
 import { initialsOf } from "../lib/profile";
 import { postSharePath } from "../lib/share";
@@ -89,14 +89,14 @@ export default function PostCard({
   // Son : musique de la bibliothèque Vybe (à partir du passage choisi, en boucle sur 30 s) quand la publication est
   // visible à plus de 60 % et que le son est activé ; les vidéos lisent les réglages du son d'origine (contexte)
   const sound = postSound(post);
-  const track = useMusicTrack(sound.trackId);
+  const track = useMusicTrack(sound.provider, sound.trackId);
   const soundOn = useSoundOn();
   // Zone observée : les photos et vidéos s'il y en a, sinon toute la carte
   const frameRef = useRef<HTMLElement | null>(null);
   const visible = useVisible(frameRef);
   useMusicPlayer({
     ownerKey: post.id,
-    url: track?.audio_url ?? null,
+    source: musicSource(track),
     start: sound.start,
     volume: sound.musicVolume,
     playing: Boolean(track) && visible && soundOn,

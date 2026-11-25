@@ -20,7 +20,7 @@ export const POST_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
 export const POST_IMAGE_MAX_INPUT_BYTES = 20 * 1024 * 1024; // avant compression (le stockage accepte 5 Mo après)
 
 export const POST_COLUMNS =
-  "id, author_id, body, media, image_urls, video_url, video_poster_url, video_duration_s, music_track_id, music_start_s, music_volume, original_sound, original_volume, sport, event_id, created_at";
+  "id, author_id, body, media, image_urls, video_url, video_poster_url, video_duration_s, music_provider, music_external_id, music_track_id, music_start_s, music_volume, original_sound, original_volume, sport, event_id, created_at";
 export const COMMENT_COLUMNS = "id, post_id, author_id, body, created_at";
 
 export type PostRow = {
@@ -36,7 +36,9 @@ export type PostRow = {
   video_poster_url?: string | null;
   video_duration_s?: number | null;
   // Son (lib/music.ts : postSound) : musique de la bibliothèque Vybe et son d'origine des vidéos
-  music_track_id?: string | null;
+  music_provider?: string | null; // 'vybe' | 'epidemic'
+  music_external_id?: string | null; // identifiant Epidemic Sound (seulement si music_provider = 'epidemic')
+  music_track_id?: string | null; // music_tracks.id (seulement si music_provider = 'vybe')
   music_start_s?: number | null;
   music_volume?: number | null;
   original_sound?: boolean | null;

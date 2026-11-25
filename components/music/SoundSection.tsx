@@ -5,7 +5,7 @@ import Image from "next/image";
 import MusicPicker from "./MusicPicker";
 import Switch from "../Switch";
 import { useT } from "../../lib/i18n";
-import type { MusicTrack } from "../../lib/music";
+import { musicSource, type MusicTrack } from "../../lib/music";
 import { MUSIC_CLIP_SECONDS, unlockAudio, useMusicPlayer } from "../../lib/sound";
 import { formatDuration } from "../../lib/videos";
 
@@ -45,7 +45,7 @@ export default function SoundSection({
   // Préécoute du passage choisi, au volume choisi (arrêtée pendant le choix d'un autre morceau)
   useMusicPlayer({
     ownerKey: "publish-preview",
-    url: track?.audio_url ?? null,
+    source: musicSource(track),
     start,
     volume: value.musicVolume,
     playing: listening && Boolean(track) && !pickerOpen,

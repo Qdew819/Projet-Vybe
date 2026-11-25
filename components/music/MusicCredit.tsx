@@ -107,8 +107,12 @@ export default function MusicCredit({ track, variant = "card" }: { track: MusicT
                 <dd className="tabular-nums">{formatDuration(track.duration_s)}</dd>
               </>
             ) : null}
-            <dt className="text-muted">{t("music.licenseLabel")}</dt>
-            <dd className="break-words">{track.license || t("music.licenseUnknown")}</dd>
+            {track.provider === "vybe" && (
+              <>
+                <dt className="text-muted">{t("music.licenseLabel")}</dt>
+                <dd className="break-words">{track.license || t("music.licenseUnknown")}</dd>
+              </>
+            )}
           </dl>
           {track.license_url && (
             <a
@@ -120,7 +124,7 @@ export default function MusicCredit({ track, variant = "card" }: { track: MusicT
               {t("music.licenseLink")}
             </a>
           )}
-          <p className="text-xs leading-snug text-muted">{t("music.fromLibrary")}</p>
+          <p className="text-xs leading-snug text-muted">{track.provider === "epidemic" ? t("music.byEpidemic") : t("music.fromLibrary")}</p>
           <button
             type="button"
             onClick={() => dialogRef.current?.close()}
