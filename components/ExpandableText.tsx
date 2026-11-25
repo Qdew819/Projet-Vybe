@@ -7,10 +7,12 @@ import { useT } from "../lib/i18n";
 const CLAMPS = { 1: "line-clamp-1", 2: "line-clamp-2", 3: "line-clamp-3", 4: "line-clamp-4", 5: "line-clamp-5" } as const;
 
 // Couleur de « plus » selon le fond : gris sur les cartes, blanc atténué sur une vidéo (fil plein écran)
+// Toujours la même couleur (pas de changement au survol : « moins » apparaît sous le pointeur qui vient de toucher
+// « plus » et serait sinon affiché plus clair) ; le survol souligne seulement.
 const TONES = {
-  surface: "text-muted hover:text-foreground focus-visible:outline-accent-ink",
-  background: "text-muted hover:text-foreground focus-visible:outline-accent-ink",
-  video: "text-white/70 hover:text-white focus-visible:outline-white",
+  surface: "text-muted hover:underline focus-visible:outline-accent-ink",
+  background: "text-muted hover:underline focus-visible:outline-accent-ink",
+  video: "text-white/70 hover:underline focus-visible:outline-white",
 } as const;
 
 // Pas de useLayoutEffect côté serveur (avertissement de React)
