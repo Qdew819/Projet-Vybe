@@ -49,6 +49,7 @@ function useSessionMuted(): boolean {
 }
 
 const VISIBLE_RATIO = 0.6;
+const VERTICAL_RATIO = 0.8; // largeur / hauteur en dessous de laquelle la vidéo remplit le cadre (cover)
 const VIEW_AFTER_SECONDS = 2;
 
 const iconProps = {
@@ -62,25 +63,30 @@ const iconProps = {
 };
 
 // Vidéo d'une publication : affiche + gros bouton lecture, lecture automatique muette en boucle quand 60 % est visible,
-// pause hors de l'écran ou quand l'onglet est caché. Une vue est comptée après 2 s de lecture cumulées.
+// pause hors de l'écran ou quand l'onglet est caché. Une vue est comptée après 2 s de lecture cumulées
+// (une seule par publication, même si elle contient plusieurs vidéos : voir recordView).
+// frame : remplit le cadre du carrousel (MediaCarousel) ; vidéo verticale en cover, horizontale entière sur fond noir.
 export default function VideoPlayer({
   postId,
   src,
   poster,
   duration,
   views,
+  frame = false,
 }: {
   postId: string;
   src: string;
   poster: string | null;
   duration: number | null;
   views?: string; // « 128 vues », déjà formaté
+  frame?: boolean;
 }) {
   const t = useT();
   const videoRef = useRef<HTMLVideoElement>(null);
   const muted = useSessionMuted();
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [fit, setFit] = useState<"cover" | "contain">("cover");
   const inView = useRef(false);
   const userPaused = useRef(false); // mis en pause à la main : pas de reprise automatique tant qu'elle reste à l'écran
   const watched = useRef(0);
@@ -173,7 +179,7 @@ export default function VideoPlayer({
   const label = duration ? formatDuration(duration) : null;
 
   return (
-    <div className="relative mt-3 overflow-hidden rounded-xl bg-black">
+    <div className={frame ? "absolute inset-0 bg-black" : "relative mt-3 overflow-hidden rounded-xl bg-black"}>
       <video
         ref={videoRef}
         src={src}
@@ -189,10 +195,18 @@ export default function VideoPlayer({
           setFailed(true);
           setPlaying(false);
         }}
+        onLoadedMetadata={(e) => {
+          const video = e.currentTarget;
+          if (video.videoWidth && video.videoHeight) setFit(video.videoWidth / video.videoHeight <= VERTICAL_RATIO ? "cover" : "contain");
+        }}
         onLoadedData={() => {
           if (inView.current) autoplay();
         }}
-        className="mx-auto block max-h-[70vh] min-h-48 w-full object-contain"
+        className={
+          frame
+            ? `absolute inset-0 h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`
+            : "mx-auto block max-h-[70vh] min-h-48 w-full object-contain"
+        }
       />
 
       {failed ? (

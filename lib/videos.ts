@@ -1,5 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { POST_BUCKET, VIDEO_BUCKET, loadPostStats, type PostRow, type PostStats } from "./posts";
+import {
+  POST_BUCKET,
+  VIDEO_BUCKET,
+  loadPostStats,
+  removePostImages,
+  removeVideoPaths,
+  storagePath,
+  uploadPostImage,
+  type MediaItem,
+  type PostRow,
+  type PostStats,
+} from "./posts";
 import { loadPeople, type Person } from "./follows";
 
 // Vidéos des publications : espace de stockage public « videos » (un dossier par personne, 50 Mo, mp4 / webm / quicktime).
@@ -151,6 +162,88 @@ export async function uploadPoster(supabase: SupabaseClient, userId: string, id:
   const { error } = await supabase.storage.from(POST_BUCKET).upload(path, blob, { contentType: "image/jpeg", cacheControl: "3600" });
   if (error) throw error;
   return { path, url: supabase.storage.from(POST_BUCKET).getPublicUrl(path).data.publicUrl };
+}
+
+// ---------- Envoi de tous les éléments d'une publication ----------
+
+// Envois simultanés au moment de publier
+const MEDIA_UPLOAD_CONCURRENCY = 3;
+
+export type MediaDraft =
+  | { kind: "image"; blob: Blob }
+  | { kind: "video"; file: File; duration: number; poster: Blob | null };
+
+// Envoie photos et vidéos (avec leur affiche), 3 à la fois, en gardant l'ordre choisi. onProgress(éléments terminés).
+// Si un seul envoi échoue : plus aucun nouvel envoi, tout ce qui a déjà été envoyé est supprimé et l'erreur est
+// relancée. La publication n'est donc jamais créée à moitié.
+export async function uploadPostMedia(
+  supabase: SupabaseClient,
+  userId: string,
+  drafts: MediaDraft[],
+  onProgress?: (done: number) => void
+): Promise<MediaItem[]> {
+  const results: (MediaItem | undefined)[] = new Array(drafts.length);
+  const imagePaths: string[] = [];
+  const videoPaths: string[] = [];
+  let next = 0;
+  let done = 0;
+  let failure: unknown = null;
+
+  async function send(draft: MediaDraft): Promise<MediaItem> {
+    if (draft.kind === "image") {
+      const image = await uploadPostImage(supabase, userId, draft.blob);
+      imagePaths.push(image.path);
+      return { type: "image", url: image.url };
+    }
+    const id = crypto.randomUUID();
+    const video = await uploadVideo(supabase, userId, id, draft.file, () => undefined);
+    videoPaths.push(video.path);
+    let poster: string | null = null;
+    if (draft.poster) {
+      const uploaded = await uploadPoster(supabase, userId, id, draft.poster);
+      imagePaths.push(uploaded.path);
+      poster = uploaded.url;
+    }
+    return { type: "video", url: video.url, poster, duration_s: Math.min(VIDEO_MAX_SECONDS, Math.max(1, Math.round(draft.duration))) };
+  }
+
+  async function worker() {
+    while (failure === null && next < drafts.length) {
+      const index = next++;
+      try {
+        results[index] = await send(drafts[index]);
+        done += 1;
+        onProgress?.(done);
+      } catch (err) {
+        if (failure === null) failure = err;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(MEDIA_UPLOAD_CONCURRENCY, drafts.length) }, worker));
+  if (failure !== null) {
+    await Promise.all([removePostImages(supabase, imagePaths), removeVideoPaths(supabase, videoPaths)]);
+    throw failure;
+  }
+  return results as MediaItem[];
+}
+
+// Supprime les fichiers d'éléments déjà envoyés (publication finalement refusée par la base)
+export async function removeMediaFiles(supabase: SupabaseClient, media: MediaItem[]): Promise<void> {
+  const images = media.flatMap((m) => storagePath(m.type === "image" ? m.url : m.poster, POST_BUCKET) ?? []);
+  const videos = media.flatMap((m) => (m.type === "video" ? (storagePath(m.url, VIDEO_BUCKET) ?? []) : []));
+  await Promise.all([removePostImages(supabase, images), removeVideoPaths(supabase, videos)]);
+}
+
+// Colonnes de compatibilité écrites avec posts.media : photos dans l'ordre, PREMIÈRE vidéo (null s'il n'y en a pas)
+export function legacyColumns(media: MediaItem[]) {
+  const first = media.find((m) => m.type === "video");
+  return {
+    image_urls: media.filter((m) => m.type === "image").map((m) => m.url),
+    video_url: first?.url ?? null,
+    video_poster_url: first?.poster ?? null,
+    video_duration_s: first?.duration_s ?? null,
+  };
 }
 
 // ---------- Vues ----------

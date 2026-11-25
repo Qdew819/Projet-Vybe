@@ -12,9 +12,14 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
+import VideoPlayer from "./VideoPlayer";
 import { useT } from "../lib/i18n";
+import type { MediaItem } from "../lib/posts";
+import { formatDuration } from "../lib/videos";
 
-// Carrousel de photos façon Instagram : une photo à la fois, pleine largeur, ratio 4:5, on glisse sur le côté.
+// Carrousel de photos ET de vidéos façon Instagram : un élément à la fois, pleine largeur, ratio 4:5, on glisse sur le côté.
+// Vidéos : VideoPlayer en mode cadre (lecture auto muette à plus de 60 % visible, pause hors de l'écran, bouton son,
+// une seule vidéo à la fois dans la page, une vue par publication). Dans l'aperçu de /publier : simple <video>.
 // - Un doigt : seulement le glissement horizontal d'une photo complète à la suivante (scroll-snap natif). Le
 //   défilement vertical est coupé dans le cadre (overflow-y hidden) et le rebond de Safari aussi (overscroll none) :
 //   la photo ne peut plus bouger dans son cadre ni laisser voir le fond.
@@ -57,20 +62,26 @@ type Zoom = {
   releasing: boolean;
 };
 
-export default function ImageCarousel({
-  images,
+export default function MediaCarousel({
+  items,
+  postId,
   onOpen,
   openLabel,
   overlay,
   zoomable = true,
+  preview = false,
+  videoBadge = false,
   sizes = "(max-width: 768px) 100vw, 600px",
   className = "",
 }: {
-  images: string[];
-  onOpen?: (index: number) => void; // clic / toucher simple sur une photo
+  items: MediaItem[];
+  postId?: string; // publication affichée (vues des vidéos) ; absent dans l'aperçu
+  onOpen?: (index: number) => void; // clic / toucher simple sur une PHOTO (index dans items)
   openLabel?: string; // nom du bouton de chaque photo ({n} et {total} remplacés)
-  overlay?: (index: number) => ReactNode; // contenu ajouté sur chaque photo (ex. bouton « × » de /publier)
-  zoomable?: boolean; // pincement à deux doigts (false dans l'aperçu de /publier)
+  overlay?: (index: number) => ReactNode; // contenu ajouté sur chaque élément (ex. bouton « × » de /publier)
+  zoomable?: boolean; // pincement à deux doigts sur les photos (false dans l'aperçu de /publier)
+  preview?: boolean; // aperçu de /publier : vidéos avec les commandes du navigateur, sans lecture automatique
+  videoBadge?: boolean; // petite icône vidéo en haut à gauche si au moins un élément est une vidéo
   sizes?: string;
   className?: string;
 }) {
@@ -81,18 +92,21 @@ export default function ImageCarousel({
   const [rawActive, setRawActive] = useState(0);
   const [zoom, setZoom] = useState<Zoom | null>(null);
 
-  const count = images.length;
+  const count = items.length;
   const multiple = count > 1;
   // Une photo retirée (formulaire) peut laisser l'index au-delà de la dernière
   const active = Math.min(rawActive, Math.max(0, count - 1));
 
   // Valeurs lues par les écouteurs natifs (installés une seule fois)
-  const live = useRef({ images, active });
+  const live = useRef({ items, active });
   useEffect(() => {
-    live.current = { images, active };
+    live.current = { items, active };
   });
 
-  const alt = (index: number) => t("carousel.photoOf").replace("{n}", String(index + 1)).replace("{total}", String(count));
+  const alt = (index: number) =>
+    t(items[index]?.type === "video" ? "carousel.videoOf" : "carousel.photoOf")
+      .replace("{n}", String(index + 1))
+      .replace("{total}", String(count));
   const altRef = useRef(alt);
   useEffect(() => {
     altRef.current = alt;
@@ -112,9 +126,10 @@ export default function ImageCarousel({
 
     function onTouchStart(e: TouchEvent) {
       if (e.touches.length !== 2 || pinching) return;
-      const { images: list, active: index } = live.current;
+      const { items: list, active: index } = live.current;
       const slide = scroller!.querySelector<HTMLElement>(`[data-slide="${index}"]`);
-      if (!slide || !list[index]) return;
+      // Zoom seulement sur les photos (une vidéo garde son comportement)
+      if (!slide || list[index]?.type !== "image") return;
       e.preventDefault();
       pinching = true;
       if (releaseTimer) clearTimeout(releaseTimer);
@@ -125,7 +140,7 @@ export default function ImageCarousel({
       const mid = middle(a, b);
       start = { distance: Math.max(1, distance(a, b)), mid, scrollLeft: index * scroller!.clientWidth };
       setZoom({
-        src: list[index],
+        src: list[index].url,
         alt: altRef.current(index),
         rect: { left: box.left, top: box.top, width: box.width, height: box.height },
         origin: { x: mid.x - box.left, y: mid.y - box.top },
@@ -237,23 +252,59 @@ export default function ImageCarousel({
       >
         <div
           ref={scrollerRef}
-          tabIndex={multiple && !onOpen ? 0 : undefined}
+          tabIndex={multiple ? 0 : undefined}
           onScroll={multiple ? onScroll : undefined}
           onPointerDown={onPointerDown}
           onClickCapture={onClickCapture}
           // overflow-y hidden + overscroll none : un doigt ne peut que changer de photo (pas de rebond qui montre le fond)
           className="absolute inset-0 flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-none [scrollbar-width:none] [touch-action:pan-x_pan-y] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-ink [&::-webkit-scrollbar]:hidden"
         >
-          {images.map((src, index) => {
+          {items.map((item, index) => {
+            const key = `${index}-${item.url}`;
+            if (item.type === "video") {
+              return (
+                <div
+                  key={key}
+                  data-slide={index}
+                  data-type="video"
+                  role="group"
+                  aria-label={alt(index)}
+                  className="relative h-full w-full shrink-0 snap-center snap-always overflow-hidden bg-black"
+                >
+                  {preview || !postId ? (
+                    <>
+                      <video
+                        src={item.url}
+                        poster={item.poster ?? undefined}
+                        controls
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="absolute inset-0 h-full w-full object-contain"
+                      />
+                      {item.duration_s ? (
+                        <span className="pointer-events-none absolute bottom-14 right-2 rounded-md bg-black/75 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white">
+                          {formatDuration(item.duration_s)}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <VideoPlayer frame postId={postId} src={item.url} poster={item.poster ?? null} duration={item.duration_s ?? null} />
+                  )}
+                  {overlay?.(index)}
+                </div>
+              );
+            }
             // Photo d'origine servie telle quelle (unoptimized : pas de réencodage par Next, donc pas de perte) ;
             // fill = absolute inset-0 w-full h-full, object-cover remplit le cadre 4:5 sans étirer l'image
             const picture = (
-              <Image src={src} alt={alt(index)} fill unoptimized quality={85} sizes={sizes} draggable={false} className={imageClass} />
+              <Image src={item.url} alt={alt(index)} fill unoptimized quality={85} sizes={sizes} draggable={false} className={imageClass} />
             );
             return (
               <div
-                key={`${index}-${src}`}
+                key={key}
                 data-slide={index}
+                data-type="image"
                 className="relative h-full w-full shrink-0 snap-center snap-always overflow-hidden"
               >
                 {onOpen ? (
@@ -274,20 +325,31 @@ export default function ImageCarousel({
           })}
         </div>
 
+        {videoBadge && items.some((item) => item.type === "video") && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+              <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" />
+            </svg>
+          </span>
+        )}
+
         {multiple && (
           <>
             <p aria-hidden="true" className="pointer-events-none absolute right-2 top-2 z-10 rounded-full bg-black/55 px-2.5 py-1 text-xs font-bold tabular-nums text-white">
               {active + 1}/{count}
             </p>
             {active > 0 && (
-              <button type="button" onClick={() => goTo(active - 1)} aria-label={t("post.previousPhoto")} className={`${arrow} left-2`}>
+              <button type="button" onClick={() => goTo(active - 1)} aria-label={t("carousel.previous")} className={`${arrow} left-2`}>
                 <svg {...iconProps} className="h-5 w-5" strokeWidth={2.5}>
                   <path d="M15 18l-6-6 6-6" />
                 </svg>
               </button>
             )}
             {active < count - 1 && (
-              <button type="button" onClick={() => goTo(active + 1)} aria-label={t("post.nextPhoto")} className={`${arrow} right-2`}>
+              <button type="button" onClick={() => goTo(active + 1)} aria-label={t("carousel.next")} className={`${arrow} right-2`}>
                 <svg {...iconProps} className="h-5 w-5" strokeWidth={2.5}>
                   <path d="M9 18l6-6-6-6" />
                 </svg>

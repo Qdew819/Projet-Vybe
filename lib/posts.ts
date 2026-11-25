@@ -8,10 +8,10 @@ import type { MessageKey } from "./i18n";
 // Les règles d'accès de la base (comptes privés, blocages) filtrent déjà ce que chacun peut voir.
 
 export const POST_BODY_MAX = 500;
-// Nombre maximum de photos par publication (la même limite est vérifiée par la base). Seule source de cette valeur.
-export const MAX_POST_IMAGES = 15;
-// Envois de photos simultanés au moment de publier
-const IMAGE_UPLOAD_CONCURRENCY = 3;
+// Éléments d'une publication (photos et vidéos mélangées, colonne posts.media). Mêmes limites que dans la base.
+// Seule source de ces valeurs dans le code.
+export const MAX_POST_MEDIA = 15;
+export const MAX_POST_VIDEOS = 5;
 export const COMMENT_BODY_MAX = 300;
 export const FEED_PAGE_SIZE = 10;
 export const POST_BUCKET = "posts";
@@ -19,15 +19,19 @@ export const VIDEO_BUCKET = "videos";
 export const POST_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
 export const POST_IMAGE_MAX_INPUT_BYTES = 20 * 1024 * 1024; // avant compression (le stockage accepte 5 Mo après)
 
-export const POST_COLUMNS = "id, author_id, body, image_urls, video_url, video_poster_url, video_duration_s, sport, event_id, created_at";
+export const POST_COLUMNS =
+  "id, author_id, body, media, image_urls, video_url, video_poster_url, video_duration_s, sport, event_id, created_at";
 export const COMMENT_COLUMNS = "id, post_id, author_id, body, created_at";
 
 export type PostRow = {
   id: string;
   author_id: string;
   body: string | null;
+  // Liste ordonnée des photos et vidéos (posts.media). Vide ou absente pour les anciennes publications :
+  // lire avec postMedia(), qui la reconstruit à partir de video_url et image_urls
+  media?: unknown;
   image_urls: string[] | null;
-  // Vidéo (une publication a soit des photos, soit une vidéo) : absent si la requête ne lit pas ces colonnes
+  // Compatibilité : photos dans l'ordre et PREMIÈRE vidéo de media. Absent si la requête ne lit pas ces colonnes
   video_url?: string | null;
   video_poster_url?: string | null;
   video_duration_s?: number | null;
@@ -35,6 +39,40 @@ export type PostRow = {
   event_id: string | null;
   created_at: string;
 };
+
+export type MediaItem = { type: "image" | "video"; url: string; poster?: string | null; duration_s?: number | null };
+
+function parseMedia(value: unknown): MediaItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw): MediaItem[] => {
+    if (!raw || typeof raw !== "object") return [];
+    const item = raw as Record<string, unknown>;
+    if ((item.type !== "image" && item.type !== "video") || typeof item.url !== "string" || !item.url) return [];
+    if (item.type === "image") return [{ type: "image", url: item.url }];
+    return [
+      {
+        type: "video",
+        url: item.url,
+        poster: typeof item.poster === "string" && item.poster ? item.poster : null,
+        duration_s: typeof item.duration_s === "number" ? item.duration_s : null,
+      },
+    ];
+  });
+}
+
+// Photos et vidéos d'une publication, dans l'ordre. Anciennes publications (media vide) : la vidéo, puis les photos.
+export function postMedia(
+  post: Pick<PostRow, "media" | "image_urls" | "video_url" | "video_poster_url" | "video_duration_s">
+): MediaItem[] {
+  const media = parseMedia(post.media);
+  if (media.length > 0) return media;
+  const legacy: MediaItem[] = [];
+  if (post.video_url) {
+    legacy.push({ type: "video", url: post.video_url, poster: post.video_poster_url ?? null, duration_s: post.video_duration_s ?? null });
+  }
+  for (const url of post.image_urls ?? []) if (url) legacy.push({ type: "image", url });
+  return legacy;
+}
 
 export type CommentRow = { id: string; post_id: string; author_id: string; body: string; created_at: string };
 
@@ -235,42 +273,6 @@ export async function uploadPostImage(supabase: SupabaseClient, userId: string, 
   return { path, url: supabase.storage.from(POST_BUCKET).getPublicUrl(path).data.publicUrl };
 }
 
-// Envoie toutes les photos, 3 à la fois, en gardant l'ordre choisi. onProgress(nombre déjà envoyées).
-// Si une seule échoue : plus aucun nouvel envoi, les photos déjà envoyées sont supprimées et l'erreur est relancée
-// (la publication n'est alors pas créée : jamais de publication à moitié vide).
-export async function uploadPostImages(
-  supabase: SupabaseClient,
-  userId: string,
-  blobs: Blob[],
-  onProgress?: (done: number) => void
-): Promise<{ path: string; url: string }[]> {
-  const results: ({ path: string; url: string } | undefined)[] = new Array(blobs.length);
-  let next = 0;
-  let done = 0;
-  let failure: unknown = null;
-
-  async function worker() {
-    while (failure === null && next < blobs.length) {
-      const index = next++;
-      try {
-        results[index] = await uploadPostImage(supabase, userId, blobs[index]);
-        done += 1;
-        onProgress?.(done);
-      } catch (err) {
-        if (failure === null) failure = err;
-      }
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(IMAGE_UPLOAD_CONCURRENCY, blobs.length) }, worker));
-  const uploaded = results.filter((r): r is { path: string; url: string } => Boolean(r));
-  if (failure !== null) {
-    await removePostImages(supabase, uploaded.map((u) => u.path));
-    throw failure;
-  }
-  return uploaded;
-}
-
 // Adresse publique → chemin dans un espace de stockage (null si l'adresse n'en vient pas)
 export function storagePath(url: string | null | undefined, bucket: string): string | null {
   if (!url) return null;
@@ -295,6 +297,12 @@ export async function removeVideoFiles(supabase: SupabaseClient, videoPath: stri
   if (poster.error) console.error(`Suppression de l'affiche impossible : ${poster.error.message}`);
 }
 
+export async function removeVideoPaths(supabase: SupabaseClient, paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  const { error } = await supabase.storage.from(VIDEO_BUCKET).remove(paths);
+  if (error) console.error(`Suppression des vidéos impossible : ${error.message}`);
+}
+
 export async function removePostImages(supabase: SupabaseClient, paths: string[]): Promise<void> {
   if (paths.length === 0) return;
   const { error } = await supabase.storage.from(POST_BUCKET).remove(paths);
@@ -310,11 +318,21 @@ export async function deletePost(supabase: SupabaseClient, post: PostRow): Promi
     );
     return false;
   }
+  // Tous les fichiers : ceux de media et ceux des anciennes colonnes (doublons retirés)
+  const media = postMedia(post);
+  const images = new Set<string>();
+  const videos = new Set<string>();
+  for (const url of [...(post.image_urls ?? []), post.video_poster_url, ...media.map((m) => (m.type === "image" ? m.url : m.poster))]) {
+    const path = storagePath(url, POST_BUCKET);
+    if (path) images.add(path);
+  }
+  for (const url of [post.video_url, ...media.filter((m) => m.type === "video").map((m) => m.url)]) {
+    const path = storagePath(url, VIDEO_BUCKET);
+    if (path) videos.add(path);
+  }
   await Promise.all([
-    removePostImages(supabase, (post.image_urls ?? []).flatMap((url) => postImagePath(url) ?? [])),
-    post.video_url || post.video_poster_url
-      ? removeVideoFiles(supabase, storagePath(post.video_url, VIDEO_BUCKET), storagePath(post.video_poster_url, POST_BUCKET))
-      : Promise.resolve(),
+    removePostImages(supabase, [...images]),
+    removeVideoPaths(supabase, [...videos]),
   ]);
   return true;
 }

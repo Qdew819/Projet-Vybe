@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import Avatar from "../Avatar";
@@ -12,7 +12,7 @@ import ShareButton from "../ShareButton";
 import { formatEventDate } from "../../lib/events";
 import { followUser, type FollowStatus } from "../../lib/follows";
 import { useLanguage, useT } from "../../lib/i18n";
-import { deletePost, setLike, type PostRow, type PostStats } from "../../lib/posts";
+import { deletePost, postMedia, setLike, type MediaItem, type PostRow, type PostStats } from "../../lib/posts";
 import { initialsOf } from "../../lib/profile";
 import { postSharePath } from "../../lib/share";
 import { createClient } from "../../lib/supabase/client";
@@ -52,7 +52,8 @@ const HEART = "M12 20.5s-7.5-4.6-9.2-9.3C1.7 8 3.6 4.5 7.1 4.5c2 0 3.6 1.1 4.9 3
 
 type Confirm = "delete" | "block" | null;
 
-// Une vidéo du fil plein écran. live : vidéo montée (courante, précédente ou deux suivantes) ; sinon seulement l'affiche.
+// Une publication du fil plein écran. live : montée (courante, précédente ou deux suivantes) ; sinon seulement l'affiche.
+// Plusieurs vidéos dans la publication : on glisse horizontalement entre elles (verticalement : publication suivante).
 export default function ReelItem({
   reel,
   me,
@@ -133,13 +134,20 @@ function LiveReel({
   const t = useT();
   const language = useLanguage();
   const { post, author, stats, event } = reel;
-  const videoRef = useRef<HTMLVideoElement>(null);
+  // Vidéos de la publication, dans l'ordre (posts.media, ou la seule vidéo des anciennes publications)
+  const videos = useMemo<MediaItem[]>(() => {
+    const list = postMedia(post).filter((m) => m.type === "video");
+    return list.length > 0 ? list : post.video_url ? [{ type: "video", url: post.video_url, poster: post.video_poster_url ?? null }] : [];
+  }, [post]);
+  const [current, setCurrent] = useState(0);
+  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+  const stripRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const hidden = usePageHidden();
   const [paused, setPaused] = useState(false); // mise en pause à la main
   const [wasActive, setWasActive] = useState(active);
-  const [failed, setFailed] = useState(false);
-  const [fit, setFit] = useState<"cover" | "contain">("cover");
+  const [failedAt, setFailedAt] = useState<number[]>([]);
+  const [fits, setFits] = useState<Record<number, "cover" | "contain">>({});
   const [flash, setFlash] = useState<{ id: number; playing: boolean } | null>(null);
   const [hearts, setHearts] = useState<number[]>([]);
   const [likeBusy, setLikeBusy] = useState(false);
@@ -166,11 +174,16 @@ function LiveReel({
   const name = author?.displayName || author?.username || t("event.member");
   const handle = author?.username ? `@${author.username}` : name;
   const format = new Intl.NumberFormat(language === "en" ? "en-CA" : "fr-CA", { notation: "compact" });
+  const failed = failedAt.includes(current);
   const shouldPlay = active && !paused && !failed && !hidden;
+  const multiple = videos.length > 1;
 
-  // Lecture : seulement la vidéo courante ; son si demandé et autorisé, sinon muet
+  // Lecture : seulement la vidéo courante de la publication courante ; son si demandé et autorisé, sinon muet
   useEffect(() => {
-    const video = videoRef.current;
+    videoRefs.current.forEach((other, index) => {
+      if (other && index !== current) other.pause();
+    });
+    const video = videoRefs.current[current];
     if (!video) return;
     if (!shouldPlay) {
       video.pause();
@@ -186,12 +199,12 @@ function LiveReel({
         video.play().catch(() => undefined);
       }
     });
-  }, [shouldPlay, soundOn, onSoundBlocked]);
+  }, [shouldPlay, soundOn, onSoundBlocked, current]);
 
   // Page quittée (cachée par Next avec <Activity>, pas démontée) ou vidéo démontée : pause, sinon le son continuerait
   useEffect(() => {
-    const video = videoRef.current;
-    return () => video?.pause();
+    const list = videoRefs.current;
+    return () => list.forEach((video) => video?.pause());
   }, []);
 
   // Barre de progression : suit la lecture image par image (écrite directement, sans rendu React)
@@ -199,14 +212,14 @@ function LiveReel({
     if (!active) return;
     let frame = 0;
     const tick = () => {
-      const video = videoRef.current;
+      const video = videoRefs.current[current];
       const bar = barRef.current;
       if (video && bar && video.duration > 0) bar.style.transform = `scaleX(${video.currentTime / video.duration})`;
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [active]);
+  }, [active, current]);
 
   useEffect(() => {
     return () => {
@@ -215,8 +228,9 @@ function LiveReel({
   }, []);
 
   // Vue comptée après 2 s de lecture cumulées (les sauts et le retour au début de la boucle ne comptent pas)
-  function onTimeUpdate() {
-    const video = videoRef.current;
+  function onTimeUpdate(index: number) {
+    if (index !== current) return;
+    const video = videoRefs.current[index];
     if (!video) return;
     const delta = video.currentTime - lastTime.current;
     lastTime.current = video.currentTime;
@@ -226,6 +240,27 @@ function LiveReel({
       counted.current = true;
       recordView(createClient(), post.id);
     }
+  }
+
+  // Vidéo courante de la bande horizontale (la pause manuelle est oubliée en changeant de vidéo)
+  function onStripScroll() {
+    const strip = stripRef.current;
+    if (!strip || strip.clientWidth === 0) return;
+    const index = Math.max(0, Math.min(videos.length - 1, Math.round(strip.scrollLeft / strip.clientWidth)));
+    if (index !== current) {
+      setCurrent(index);
+      setPaused(false);
+      const next = videoRefs.current[index];
+      if (next) next.currentTime = 0;
+      if (barRef.current) barRef.current.style.transform = "scaleX(0)";
+    }
+  }
+
+  function goToVideo(index: number) {
+    const strip = stripRef.current;
+    if (!strip) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    strip.scrollTo({ left: Math.max(0, Math.min(index, videos.length - 1)) * strip.clientWidth, behavior: reduce ? "auto" : "smooth" });
   }
 
   async function like(next: boolean) {
@@ -332,31 +367,94 @@ function LiveReel({
 
   return (
     <>
-      <video
-        ref={videoRef}
-        src={post.video_url ?? undefined}
-        poster={post.video_poster_url ?? undefined}
-        preload={preload}
-        playsInline
-        muted
-        loop
-        onLoadedMetadata={(e) => {
-          const video = e.currentTarget;
-          if (video.videoWidth && video.videoHeight) setFit(video.videoWidth / video.videoHeight <= VERTICAL_RATIO ? "cover" : "contain");
-        }}
-        onTimeUpdate={onTimeUpdate}
-        onError={() => setFailed(true)}
-        className={`absolute inset-0 h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`}
-      />
+      {/* Vidéos de la publication côte à côte : glissement horizontal (scroll-snap), vertical laissé au fil */}
+      <div
+        ref={stripRef}
+        onScroll={multiple ? onStripScroll : undefined}
+        className="absolute inset-0 z-0 flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {videos.map((item, index) => {
+          const fit = fits[index] ?? "cover";
+          return (
+            <div key={`${index}-${item.url}`} className="relative h-full w-full shrink-0 snap-center snap-always">
+              <video
+                ref={(element) => {
+                  videoRefs.current[index] = element;
+                }}
+                src={item.url}
+                poster={item.poster ?? undefined}
+                preload={index === current ? preload : active && Math.abs(index - current) === 1 ? "metadata" : "none"}
+                playsInline
+                muted
+                loop
+                onLoadedMetadata={(e) => {
+                  const video = e.currentTarget;
+                  if (video.videoWidth && video.videoHeight) {
+                    const next = video.videoWidth / video.videoHeight <= VERTICAL_RATIO ? "cover" : "contain";
+                    setFits((currentFits) => (currentFits[index] === next ? currentFits : { ...currentFits, [index]: next }));
+                  }
+                }}
+                onTimeUpdate={() => onTimeUpdate(index)}
+                onError={() => setFailedAt((list) => (list.includes(index) ? list : [...list, index]))}
+                className={`absolute inset-0 h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`}
+              />
+              {/* Zone de toucher (sous l'interface) */}
+              {!failedAt.includes(index) && (
+                <button
+                  type="button"
+                  onClick={onTap}
+                  tabIndex={index === current ? 0 : -1}
+                  aria-label={paused ? t("video.play") : t("video.pause")}
+                  className="absolute inset-0 cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-[#39ff14]"
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
 
-      {/* Zone de toucher (sous l'interface) */}
-      {!failed && (
-        <button
-          type="button"
-          onClick={onTap}
-          aria-label={paused ? t("video.play") : t("video.pause")}
-          className="absolute inset-0 z-0 cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-[#39ff14]"
-        />
+      {/* Plusieurs vidéos : position (points + « 2/3 ») en haut, flèches sur ordinateur */}
+      {multiple && (
+        <>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-[calc(3.75rem+env(safe-area-inset-top))] z-20 flex items-center justify-center gap-1.5"
+          >
+            {videos.map((item, index) => (
+              <span key={`${index}-${item.url}`} className={`h-1.5 w-1.5 rounded-full ${index === current ? "bg-[#39ff14]" : "bg-white/50"}`} />
+            ))}
+            <span className="ml-1 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-bold tabular-nums text-white">
+              {current + 1}/{videos.length}
+            </span>
+          </div>
+          <p className="sr-only" aria-live="polite">
+            {t("carousel.videoOf").replace("{n}", String(current + 1)).replace("{total}", String(videos.length))}
+          </p>
+          {current > 0 && (
+            <button
+              type="button"
+              onClick={() => goToVideo(current - 1)}
+              aria-label={t("carousel.previous")}
+              className="absolute left-2 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 focus-visible:outline-2 focus-visible:outline-white md:flex"
+            >
+              <svg {...iconProps} className="h-6 w-6" strokeWidth={2.5}>
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+          )}
+          {current < videos.length - 1 && (
+            <button
+              type="button"
+              onClick={() => goToVideo(current + 1)}
+              aria-label={t("carousel.next")}
+              className="absolute right-2 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 focus-visible:outline-2 focus-visible:outline-white md:flex"
+            >
+              <svg {...iconProps} className="h-6 w-6" strokeWidth={2.5}>
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </button>
+          )}
+        </>
       )}
 
       {/* Dégradés de lisibilité (ne bloquent aucun clic) */}
@@ -400,8 +498,8 @@ function LiveReel({
           <button
             type="button"
             onClick={() => {
-              setFailed(false);
-              videoRef.current?.load();
+              setFailedAt((list) => list.filter((index) => index !== current));
+              videoRefs.current[current]?.load();
             }}
             className="min-h-11 rounded-full bg-[#39ff14] px-5 text-sm font-bold text-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           >

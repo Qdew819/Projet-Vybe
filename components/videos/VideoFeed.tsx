@@ -200,6 +200,8 @@ export default function VideoFeed({ startId, sport: sportFilter = null }: { star
     const onWheel = (e: WheelEvent) => {
       const inner = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-scrollable]");
       if (inner && inner.scrollHeight > inner.clientHeight) return;
+      // Geste horizontal (pavé tactile) : laissé au navigateur, pour passer d'une vidéo à l'autre dans une publication
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
       e.preventDefault();
       if (Math.abs(e.deltaY) < 8 || Date.now() < wheelLock.current) return;
       wheelLock.current = Date.now() + WHEEL_LOCK_MS;

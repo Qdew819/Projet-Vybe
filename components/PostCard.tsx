@@ -7,15 +7,14 @@ import Image from "next/image";
 import Link from "next/link";
 import Avatar from "./Avatar";
 import ConfirmDialog from "./ConfirmDialog";
-import ImageCarousel from "./ImageCarousel";
+import MediaCarousel from "./MediaCarousel";
 import ExpandableText from "./ExpandableText";
 import ReportDialog, { type ReportReason } from "./ReportDialog";
 import ShareButton from "./ShareButton";
-import VideoPlayer from "./VideoPlayer";
 import { formatEventDate, type EventRow } from "../lib/events";
 import type { Person } from "../lib/follows";
 import { useLanguage, useT } from "../lib/i18n";
-import { deletePost, setLike, type PostRow, type PostStats } from "../lib/posts";
+import { deletePost, postMedia, setLike, type PostRow, type PostStats } from "../lib/posts";
 import { initialsOf } from "../lib/profile";
 import { postSharePath } from "../lib/share";
 import { sportImage } from "../lib/sportImages";
@@ -77,8 +76,10 @@ export default function PostCard({
   const mine = post.author_id === me;
   const name = author?.displayName || author?.username || t("event.member");
   const handle = author?.username ? `@${author.username}` : "";
-  const images = post.image_urls ?? [];
-  const isVideo = Boolean(post.video_url);
+  // Photos et vidéos dans l'ordre (posts.media, ou reconstruites pour les anciennes publications)
+  const media = postMedia(post);
+  const images = media.filter((m) => m.type === "image").map((m) => m.url);
+  const isVideo = media.some((m) => m.type === "video");
   const format = new Intl.NumberFormat(language === "en" ? "en-CA" : "fr-CA", { notation: "compact" });
 
   async function toggleLike() {
@@ -181,18 +182,16 @@ export default function PostCard({
           <ExpandableText text={post.body} className="mt-3 text-sm leading-snug" />
         ))}
 
-      {post.video_url ? (
-        <VideoPlayer
+      {media.length > 0 && (
+        // Un élément à la fois, on glisse pour les suivants ; un toucher simple sur une photo l'ouvre en grand
+        <MediaCarousel
+          items={media}
           postId={post.id}
-          src={post.video_url}
-          poster={post.video_poster_url ?? null}
-          duration={post.video_duration_s ?? null}
+          videoBadge
+          onOpen={(index) => setViewer(media.slice(0, index).filter((m) => m.type === "image").length)}
+          openLabel={t("post.openPhoto")}
+          className="mt-3"
         />
-      ) : (
-        images.length > 0 && (
-          // Une photo à la fois, on glisse pour les suivantes ; un toucher simple l'ouvre en grand
-          <ImageCarousel images={images} onOpen={setViewer} openLabel={t("post.openPhoto")} className="mt-3" />
-        )
       )}
 
       {event && <LinkedEvent event={event} />}
@@ -244,7 +243,7 @@ export default function PostCard({
           className="flex min-h-11 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold text-muted transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent-ink"
         />
         {/* Vues (publications avec vidéo) : en bas à droite, visibles par l'auteur et par tout le monde */}
-        {post.video_url && (
+        {isVideo && (
           <span className="ml-auto flex min-h-11 items-center gap-1.5 px-2.5 text-xs font-semibold text-muted">
             <svg {...iconProps} className="h-4 w-4">
               <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
