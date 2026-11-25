@@ -9,6 +9,8 @@ import { createClient as createSessionClient } from "./supabase/server";
 //   garde que posts.music_external_id. Les URL de lecture (HLS) expirent : elles sont demandées au moment de jouer.
 
 const BASE_URL = "https://api.epidemicsound.com";
+// Délai maximum d'un appel à Epidemic Sound (le navigateur abandonne lui-même au bout de 10 s)
+const UPSTREAM_TIMEOUT_MS = 8000;
 const CACHE_MAX_MS = 60 * 60 * 1000;
 export const CACHE_TTL_MS = 30 * 60 * 1000; // < 60 min
 
@@ -77,22 +79,30 @@ export async function epidemicFetch<T>(
     if (hit && Date.now() - hit.at < hit.ttl) return hit.value as T;
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    method,
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      method,
     headers: {
       Authorization: `Bearer ${key}`,
       Accept: "application/json",
       "x-partner-user-id": partnerUserId,
       ...(body ? { "Content-Type": "application/json" } : {}),
     },
-    body: body ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  });
+      body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+    console.error(`Epidemic Sound ${method} ${path.split("?")[0]} : ${timedOut ? "délai dépassé" : String(err)}`);
+    throw new EpidemicError(timedOut ? `Epidemic Sound ne répond pas (plus de ${UPSTREAM_TIMEOUT_MS / 1000} s)` : `Epidemic Sound injoignable : ${String(err)}`, timedOut ? 504 : 503);
+  }
   if (!response.ok) {
     // 401 clé invalide, 402 crédits épuisés, 403 droits insuffisants, 429 limite atteinte… (détails dans les journaux)
     const text = await response.text().catch(() => "");
     console.error(`Epidemic Sound ${method} ${path.split("?")[0]} : ${response.status} ${text.slice(0, 300)}`);
-    throw new EpidemicError(`Epidemic Sound a répondu ${response.status}`, response.status);
+    throw new EpidemicError(`Epidemic Sound a répondu ${response.status}${text ? ` : ${text.slice(0, 160)}` : ""}`, response.status);
   }
   const value = (await response.json()) as T;
   if (cacheKey) {
@@ -132,14 +142,16 @@ export function toTrackOut(track: ApiTrack): EpidemicTrackOut | null {
 
 export type TracksPage = { tracks?: ApiTrack[]; pagination?: { limit?: number; offset?: number }; links?: { next?: string | null } };
 
-// Réponse d'erreur commune : le navigateur sait seulement que le service est indisponible
-export function unavailable(status = 503) {
-  return Response.json({ ok: false, error: "unavailable" }, { status: status === 429 ? 429 : 503 });
+// Réponse d'erreur commune : le navigateur sait seulement que le service est indisponible.
+// En développement seulement, le message réel est joint (affiché en petit sous le message d'erreur).
+export function unavailable(status = 503, err?: unknown) {
+  const detail = process.env.NODE_ENV === "development" && err !== undefined ? String(err instanceof Error ? err.message : err) : undefined;
+  return Response.json({ ok: false, error: "unavailable", ...(detail ? { detail } : {}) }, { status: status === 429 ? 429 : 503 });
 }
 
 export function guardResponse(caller: EpidemicCaller | null | "limited"): Response | null {
   if (caller === null) return Response.json({ ok: false, error: "auth" }, { status: 401 });
   if (caller === "limited") return Response.json({ ok: false, error: "rate" }, { status: 429 });
-  if (!epidemicConfigured()) return unavailable();
+  if (!epidemicConfigured()) return unavailable(503, "EPIDEMIC_SOUND_API_KEY manquante sur le serveur");
   return null;
 }

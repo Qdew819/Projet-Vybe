@@ -22,6 +22,6 @@ export async function GET(request: Request) {
     const tracks = (Array.isArray(list) ? list : []).flatMap((track) => toTrackOut(track) ?? []);
     return Response.json({ ok: true, tracks }, { headers: { "Cache-Control": "private, max-age=600" } });
   } catch (err) {
-    return unavailable(err instanceof EpidemicError ? err.status : 503);
+    return unavailable(err instanceof EpidemicError ? err.status : 503, err);
   }
 }

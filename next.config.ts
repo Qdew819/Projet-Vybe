@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
     agentFeedback: true,
   },
   cacheComponents: true,
+  // Qualités autorisées pour next/image (les photos des publications demandent 85)
+  images: { qualities: [75, 85] },
   // Robots d'aperçu de liens qui reçoivent les métadonnées dans le <head> (au lieu de les recevoir en flux plus loin
   // dans la page). Ce réglage REMPLACE la liste par défaut de Next : on la reprend telle quelle (Next 16.4,
   // shared/lib/router/utils/html-bots) et on ajoute les applications qui manquaient (Snapchat, Telegram,

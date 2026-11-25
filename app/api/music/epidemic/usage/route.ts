@@ -32,6 +32,6 @@ export async function POST(request: Request) {
     });
     return Response.json({ ok: true });
   } catch (err) {
-    return unavailable(err instanceof EpidemicError ? err.status : 503);
+    return unavailable(err instanceof EpidemicError ? err.status : 503, err);
   }
 }

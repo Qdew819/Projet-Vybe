@@ -22,9 +22,23 @@ import { formatDuration } from "../../lib/videos";
 
 type Tab = "epidemic" | "vybe";
 type VybeLoad = { status: "loading" } | { status: "error" } | { status: "ready"; tracks: MusicTrack[] };
-type EpidemicList = { status: "loading" | "error" | "ready"; tracks: MusicTrack[]; nextOffset: number | null; loadingMore: boolean };
+type EpidemicList = {
+  status: "loading" | "error" | "ready";
+  tracks: MusicTrack[];
+  nextOffset: number | null;
+  loadingMore: boolean;
+  error?: string; // message réel (affiché seulement en développement)
+};
 
-const SEARCH_DELAY_MS = 400;
+const SEARCH_DELAY_MS = 300;
+const LOADING: EpidemicList = { status: "loading", tracks: [], nextOffset: null, loadingMore: false };
+const DEV = process.env.NODE_ENV === "development";
+
+// Ambiances mises en avant : celles qui collent au sport d'abord (sport, course, énergie, épique, action…)
+const SPORTY = /sport|run|workout|energ|epic|action|motivat|power|intense|hype|fight|drive|upbeat|powerful/i;
+function sportyFirst<T extends { id: string; name: string }>(list: T[]): T[] {
+  return [...list].sort((a, b) => Number(SPORTY.test(`${b.id} ${b.name}`)) - Number(SPORTY.test(`${a.id} ${a.name}`)));
+}
 
 // Panneau « Ajouter une musique » (feuille qui monte du bas sur téléphone, fenêtre centrée sur ordinateur).
 // Deux onglets : Epidemic Sound (par défaut : recherche, ambiances, collections, pagination) et la bibliothèque Vybe.
@@ -56,8 +70,12 @@ export default function MusicPicker({
   const [browse, setBrowse] = useState<EpidemicBrowse | null>(null);
   const [termInput, setTermInput] = useState("");
   const [filter, setFilter] = useState<EpidemicFilter>({ term: "", mood: null, collection: null });
-  const [list, setList] = useState<EpidemicList>({ status: "loading", tracks: [], nextOffset: null, loadingMore: false });
+  const [list, setList] = useState<EpidemicList>(LOADING);
   const [attempt, setAttempt] = useState(0);
+  const filterRef = useRef(filter);
+  useEffect(() => {
+    filterRef.current = filter;
+  }, [filter]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -85,42 +103,50 @@ export default function MusicPicker({
   // Epidemic Sound : ambiances et collections (une fois par ouverture ; facultatives)
   useEffect(() => {
     if (!open || tab !== "epidemic" || browse) return;
-    let cancelled = false;
-    browseEpidemic().then(
-      (result) => !cancelled && setBrowse(result),
-      () => undefined
+    const controller = new AbortController();
+    browseEpidemic(controller.signal).then(
+      (result) => setBrowse({ moods: sportyFirst(result.moods), collections: result.collections }),
+      () => undefined // facultatif : la liste des morceaux s'affiche quand même
     );
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [open, tab, browse]);
 
-  // Recherche tapée : appliquée après une courte pause
+  // Recherche tapée : lancée après 300 ms sans frappe
   useEffect(() => {
     const timer = setTimeout(() => {
-      setFilter((current) => (current.term === termInput ? current : { term: termInput, mood: current.mood, collection: termInput ? null : current.collection }));
+      if (termInput === filterRef.current.term) return;
+      setList(LOADING);
+      setFilter((current) => ({ term: termInput, mood: current.mood, collection: termInput ? null : current.collection }));
     }, SEARCH_DELAY_MS);
     return () => clearTimeout(timer);
   }, [termInput]);
 
-  // Première page pour le filtre courant
+  // Première page pour le filtre courant : dès l'ouverture, sans rien taper (morceaux populaires), puis à chaque
+  // recherche ou filtre. 10 s au plus (lib/music.ts) : ensuite « indisponible » avec « Réessayer ».
   useEffect(() => {
     if (!open || tab !== "epidemic") return;
     const controller = new AbortController();
     searchEpidemic(filter, 0, controller.signal).then(
-      (page) => setList({ status: "ready", tracks: page.tracks, nextOffset: page.nextOffset, loadingMore: false }),
+      (page) => {
+        if (!controller.signal.aborted) setList({ status: "ready", tracks: page.tracks, nextOffset: page.nextOffset, loadingMore: false });
+      },
       (err: unknown) => {
         if (controller.signal.aborted) return;
-        console.warn(err);
-        setList({ status: "error", tracks: [], nextOffset: null, loadingMore: false });
+        console.warn("Epidemic Sound :", err);
+        setList({ ...LOADING, status: "error", error: err instanceof Error ? err.message : String(err) });
       }
     );
     return () => controller.abort();
   }, [open, tab, filter, attempt]);
 
   function changeFilter(next: EpidemicFilter) {
-    setList({ status: "loading", tracks: [], nextOffset: null, loadingMore: false });
+    setList(LOADING);
     setFilter(next);
+  }
+
+  function retry() {
+    setList(LOADING);
+    setAttempt((n) => n + 1);
   }
 
   async function loadMore() {
@@ -177,14 +203,18 @@ export default function MusicPicker({
       aria-labelledby="music-picker-title"
       onClose={() => {
         setPreview(null);
+        // À la prochaine ouverture : squelettes puis liste à jour (jamais l'erreur d'avant)
+        if (list.status === "error") setList(LOADING);
         onClose();
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) e.currentTarget.close();
       }}
-      className="mx-auto mb-0 mt-auto flex h-[85dvh] w-full max-w-[500px] flex-col rounded-t-3xl border border-b-0 border-line bg-background p-0 text-foreground backdrop:bg-black/70 md:mb-auto md:rounded-3xl md:border-b"
+      // Pas de classe d'affichage (flex…) sur <dialog> : elle l'afficherait même fermé (Tailwind ne masque pas
+      // les <dialog> fermés). La mise en page flex est sur le contenu.
+      className="mx-auto mb-0 mt-auto h-[85dvh] w-full max-w-[500px] rounded-t-3xl border border-b-0 border-line bg-background p-0 text-foreground backdrop:bg-black/70 md:mb-auto md:rounded-3xl md:border-b"
     >
-      <div className="flex min-h-0 flex-1 flex-col px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3">
+      <div className="flex h-full min-h-0 flex-col px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3">
         <div aria-hidden="true" className="mx-auto h-1.5 w-10 rounded-full bg-line md:hidden" />
         <div className="mt-3 flex items-center justify-between gap-3">
           <h2 id="music-picker-title" className="text-lg font-bold">
@@ -277,15 +307,13 @@ export default function MusicPicker({
             <div className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain">
               {list.status === "loading" && <ListSkeleton />}
               {list.status === "error" && (
-                <div className="flex flex-col items-start gap-3 py-4">
+                <div role="alert" className="flex flex-col items-start gap-3 py-4">
                   <p className="text-sm font-bold text-danger">{t("music.epidemicUnavailable")}</p>
+                  {DEV && list.error && <p className="break-all font-mono text-[11px] leading-snug text-muted">{list.error}</p>}
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        setList({ status: "loading", tracks: [], nextOffset: null, loadingMore: false });
-                        setAttempt((n) => n + 1);
-                      }}
+                      onClick={retry}
                       className="min-h-11 rounded-full border-2 border-line px-4 text-sm font-bold focus-visible:outline-2 focus-visible:outline-accent-ink"
                     >
                       {t("eventForm.retry")}

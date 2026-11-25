@@ -26,6 +26,6 @@ export async function GET() {
       { headers: { "Cache-Control": "private, max-age=600" } }
     );
   } catch (err) {
-    return unavailable(err instanceof EpidemicError ? err.status : 503);
+    return unavailable(err instanceof EpidemicError ? err.status : 503, err);
   }
 }

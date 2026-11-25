@@ -27,6 +27,6 @@ export async function GET(request: Request) {
     if (!stream.url) return unavailable();
     return Response.json({ ok: true, url: stream.url, expires: stream.expires ?? null }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err) {
-    return unavailable(err instanceof EpidemicError ? err.status : 503);
+    return unavailable(err instanceof EpidemicError ? err.status : 503, err);
   }
 }

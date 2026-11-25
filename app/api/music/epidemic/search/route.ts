@@ -50,6 +50,6 @@ export async function GET(request: Request) {
     const more = Boolean(page.links?.next) && tracks.length > 0 && !(textSearch && offset + PAGE >= SEARCH_MAX_OFFSET);
     return Response.json({ ok: true, tracks, nextOffset: more ? offset + PAGE : null }, { headers: { "Cache-Control": "private, max-age=300" } });
   } catch (err) {
-    return unavailable(err instanceof EpidemicError ? err.status : 503);
+    return unavailable(err instanceof EpidemicError ? err.status : 503, err);
   }
 }

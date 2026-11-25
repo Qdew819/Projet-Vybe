@@ -211,22 +211,44 @@ export type EpidemicFilter = { term: string; mood: string | null; collection: st
 export type EpidemicPage = { tracks: MusicTrack[]; nextOffset: number | null };
 export type EpidemicBrowse = { moods: { id: string; name: string }[]; collections: { id: string; name: string; cover: string | null }[] };
 
-// Liste du panneau « Ajouter une musique » (lève une erreur si le service est indisponible)
+// Délai maximum d'un appel du panneau : au-delà, on affiche « indisponible » avec « Réessayer » (jamais d'attente infinie)
+export const EPIDEMIC_CLIENT_TIMEOUT_MS = 10000;
+
+// GET d'une de nos routes Epidemic Sound, abandonné après 10 s ; l'erreur porte le message réel (affiché en développement)
+async function epidemicGet<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error("timeout")), EPIDEMIC_CLIENT_TIMEOUT_MS);
+  const forward = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", forward, { once: true });
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const data = (await response.json().catch(() => ({}))) as T & { error?: string; detail?: string };
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}${data.error ? ` (${data.error})` : ""}${data.detail ? ` : ${data.detail}` : ""}`);
+    }
+    return data;
+  } catch (err) {
+    if (signal?.aborted) throw err; // annulé par l'appelant : pas une panne
+    if (controller.signal.aborted) throw new Error(`Pas de réponse après ${EPIDEMIC_CLIENT_TIMEOUT_MS / 1000} s (${url.split("?")[0]})`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", forward);
+  }
+}
+
+// Liste du panneau « Ajouter une musique » (lève une erreur si le service est indisponible ou trop lent)
 export async function searchEpidemic(filter: EpidemicFilter, offset: number, signal?: AbortSignal): Promise<EpidemicPage> {
   const query = new URLSearchParams({ offset: String(offset) });
   if (filter.term.trim()) query.set("term", filter.term.trim());
   if (filter.mood) query.set("mood", filter.mood);
   if (filter.collection) query.set("collection", filter.collection);
-  const response = await fetch(`/api/music/epidemic/search?${query}`, { signal });
-  if (!response.ok) throw new Error(`Epidemic Sound indisponible (${response.status})`);
-  const data = (await response.json()) as { tracks?: EpidemicTrackOut[]; nextOffset?: number | null };
+  const data = await epidemicGet<{ tracks?: EpidemicTrackOut[]; nextOffset?: number | null }>(`/api/music/epidemic/search?${query}`, signal);
   return { tracks: (data.tracks ?? []).map(fromEpidemic), nextOffset: data.nextOffset ?? null };
 }
 
-export async function browseEpidemic(): Promise<EpidemicBrowse> {
-  const response = await fetch("/api/music/epidemic/browse");
-  if (!response.ok) throw new Error(`Epidemic Sound indisponible (${response.status})`);
-  const data = (await response.json()) as Partial<EpidemicBrowse>;
+export async function browseEpidemic(signal?: AbortSignal): Promise<EpidemicBrowse> {
+  const data = await epidemicGet<Partial<EpidemicBrowse>>("/api/music/epidemic/browse", signal);
   return { moods: data.moods ?? [], collections: data.collections ?? [] };
 }
 
