@@ -824,7 +824,24 @@ export default function Publier() {
         </section>
 
         {/* Son : son d'origine des vidéos et musique de la bibliothèque Vybe (pas d'import de fichier audio) */}
-        <SoundSection value={soundChoice} onChange={setSoundChoice} hasVideo={videoCount > 0} disabled={publishing} />
+        <SoundSection
+          value={soundChoice}
+          onChange={setSoundChoice}
+          hasVideo={videoCount > 0}
+          disabled={publishing}
+          suggest={{
+            // 1er élément du carrousel : sa clé change s'il est remplacé, recadré ou modifié
+            key: items[0] ? `${items[0].id}:${items[0].preview}` : "none",
+            kind: items[0] ? (items[0].kind === "image" ? "photo" : "video") : null,
+            source: items[0]
+              ? items[0].kind === "image"
+                ? { kind: "image", blob: items[0].blob ?? items[0].base, url: items[0].preview }
+                : { kind: "video", url: items[0].preview }
+              : null,
+            sport,
+            text: body,
+          }}
+        />
 
         {/* Sport (facultatif, un seul) */}
         <section aria-labelledby="titre-sport" className="mt-4">

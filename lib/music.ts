@@ -215,13 +215,13 @@ export type EpidemicBrowse = { moods: { id: string; name: string }[]; collection
 export const EPIDEMIC_CLIENT_TIMEOUT_MS = 10000;
 
 // GET d'une de nos routes Epidemic Sound, abandonné après 10 s ; l'erreur porte le message réel (affiché en développement)
-async function epidemicGet<T>(url: string, signal?: AbortSignal): Promise<T> {
+async function epidemicGet<T>(url: string, signal?: AbortSignal, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error("timeout")), EPIDEMIC_CLIENT_TIMEOUT_MS);
   const forward = () => controller.abort(signal?.reason);
   signal?.addEventListener("abort", forward, { once: true });
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, { ...init, signal: controller.signal });
     const data = (await response.json().catch(() => ({}))) as T & { error?: string; detail?: string };
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}${data.error ? ` (${data.error})` : ""}${data.detail ? ` : ${data.detail}` : ""}`);
@@ -245,6 +245,24 @@ export async function searchEpidemic(filter: EpidemicFilter, offset: number, sig
   if (filter.collection) query.set("collection", filter.collection);
   const data = await epidemicGet<{ tracks?: EpidemicTrackOut[]; nextOffset?: number | null }>(`/api/music/epidemic/search?${query}`, signal);
   return { tracks: (data.tracks ?? []).map(fromEpidemic), nextOffset: data.nextOffset ?? null };
+}
+
+// Suggestions selon la publication en cours (photo / image de la vidéo, sport, texte) : calculées par notre serveur
+export type SuggestionBasis = "photo" | "video" | "sport" | "text" | "popular";
+export async function fetchEpidemicSuggestions(
+  input: { image: Blob | null; kind: "photo" | "video" | null; sport: string | null; text: string },
+  signal?: AbortSignal
+): Promise<{ tracks: MusicTrack[]; basis: SuggestionBasis }> {
+  const form = new FormData();
+  if (input.image) form.append("image", input.image, "frame.jpg");
+  if (input.kind) form.append("kind", input.kind);
+  if (input.sport) form.append("sport", input.sport);
+  if (input.text.trim()) form.append("text", input.text.trim().slice(0, 600));
+  const data = await epidemicGet<{ tracks?: EpidemicTrackOut[]; basis?: SuggestionBasis }>("/api/music/epidemic/suggestions", signal, {
+    method: "POST",
+    body: form,
+  });
+  return { tracks: (data.tracks ?? []).map(fromEpidemic), basis: data.basis ?? "popular" };
 }
 
 export async function browseEpidemic(signal?: AbortSignal): Promise<EpidemicBrowse> {

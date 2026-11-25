@@ -66,9 +66,10 @@ export async function epidemicFetch<T>(
     partnerUserId,
     method = "GET",
     body,
+    form,
     ttl = CACHE_TTL_MS,
     fresh = false,
-  }: { partnerUserId: string; method?: "GET" | "POST"; body?: unknown; ttl?: number; fresh?: boolean }
+  }: { partnerUserId: string; method?: "GET" | "POST" | "DELETE"; body?: unknown; form?: FormData; ttl?: number; fresh?: boolean }
 ): Promise<T> {
   const key = process.env.EPIDEMIC_SOUND_API_KEY;
   if (!key) throw new EpidemicError("EPIDEMIC_SOUND_API_KEY manquante", 503);
@@ -89,7 +90,8 @@ export async function epidemicFetch<T>(
       "x-partner-user-id": partnerUserId,
       ...(body ? { "Content-Type": "application/json" } : {}),
     },
-      body: body ? JSON.stringify(body) : undefined,
+      // multipart/form-data (form) : l'en-tête avec sa limite est posé par fetch
+      body: form ?? (body ? JSON.stringify(body) : undefined),
       cache: "no-store",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
@@ -104,7 +106,9 @@ export async function epidemicFetch<T>(
     console.error(`Epidemic Sound ${method} ${path.split("?")[0]} : ${response.status} ${text.slice(0, 300)}`);
     throw new EpidemicError(`Epidemic Sound a répondu ${response.status}${text ? ` : ${text.slice(0, 160)}` : ""}`, response.status);
   }
-  const value = (await response.json()) as T;
+  // 204 (suppression) ou réponse vide : rien à lire
+  const text = response.status === 204 ? "" : await response.text();
+  const value = (text ? JSON.parse(text) : undefined) as T;
   if (cacheKey) {
     cache.set(cacheKey, { at: Date.now(), ttl: Math.min(ttl, CACHE_MAX_MS), value });
     if (cache.size > 2000) {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import MusicPicker from "./MusicPicker";
+import MusicPicker, { type SuggestionContext } from "./MusicPicker";
 import Switch from "../Switch";
 import { useT } from "../../lib/i18n";
 import { musicSource, type MusicTrack } from "../../lib/music";
@@ -26,11 +26,13 @@ export default function SoundSection({
   onChange,
   hasVideo,
   disabled,
+  suggest = null,
 }: {
   value: SoundChoice;
   onChange: (next: SoundChoice) => void;
   hasVideo: boolean;
   disabled: boolean;
+  suggest?: SuggestionContext | null; // publication en cours (suggestions de musique)
 }) {
   const t = useT();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -195,6 +197,7 @@ export default function SoundSection({
 
       <MusicPicker
         open={pickerOpen}
+        suggest={suggest}
         onClose={() => setPickerOpen(false)}
         onChoose={(chosen) => {
           setListening(false);

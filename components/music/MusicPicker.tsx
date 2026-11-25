@@ -3,15 +3,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
-import { useT } from "../../lib/i18n";
+import { useT, type MessageKey } from "../../lib/i18n";
+import { postMoodKeywords } from "../../lib/musicKeywords";
+import { captureSuggestionImage, type SuggestionSource } from "../../lib/suggestImage";
 import {
   browseEpidemic,
   fetchActiveTracks,
+  fetchEpidemicSuggestions,
   musicSource,
   searchEpidemic,
   type EpidemicBrowse,
   type EpidemicFilter,
   type MusicTrack,
+  type SuggestionBasis,
 } from "../../lib/music";
 import { unlockAudio, useMusicPlayer } from "../../lib/sound";
 import { normalizeSearch } from "../../lib/sports";
@@ -31,6 +35,27 @@ type EpidemicList = {
 };
 
 const SEARCH_DELAY_MS = 300;
+const SUGGESTION_TIMEOUT_MS = 10000;
+
+// Publication en cours, pour les suggestions : 1er élément du carrousel, sport, texte.
+// key change quand le 1er élément change (autre élément, ou recadré / modifié).
+export type SuggestionContext = {
+  key: string;
+  kind: "photo" | "video" | null;
+  source: SuggestionSource | null;
+  sport: string | null;
+  text: string;
+};
+
+type Suggestions = { key: string; status: "ready" | "hidden"; tracks: MusicTrack[]; basis: SuggestionBasis };
+
+const BASIS_LABEL: Record<SuggestionBasis, MessageKey> = {
+  photo: "music.suggestedPhoto",
+  video: "music.suggestedVideo",
+  sport: "music.suggestedSport",
+  text: "music.suggestedText",
+  popular: "music.suggestedPopular",
+};
 const LOADING: EpidemicList = { status: "loading", tracks: [], nextOffset: null, loadingMore: false };
 const DEV = process.env.NODE_ENV === "development";
 
@@ -49,10 +74,12 @@ export default function MusicPicker({
   open,
   onClose,
   onChoose,
+  suggest = null,
 }: {
   open: boolean;
   onClose: () => void;
   onChoose: (track: MusicTrack) => void;
+  suggest?: SuggestionContext | null;
 }) {
   const t = useT();
   const mounted = useMounted();
@@ -72,6 +99,14 @@ export default function MusicPicker({
   const [filter, setFilter] = useState<EpidemicFilter>({ term: "", mood: null, collection: null });
   const [list, setList] = useState<EpidemicList>(LOADING);
   const [attempt, setAttempt] = useState(0);
+
+  // Suggestions : calculées UNE fois par ouverture et par contenu (1er média, sport, mots-clés du texte)
+  const [suggestions, setSuggestions] = useState<Suggestions | null>(null);
+  const suggestRef = useRef(suggest);
+  useEffect(() => {
+    suggestRef.current = suggest;
+  }, [suggest]);
+  const suggestKey = suggest ? `${suggest.key}|${suggest.sport ?? ""}|${postMoodKeywords(suggest.sport, suggest.text).join(",")}` : null;
   const filterRef = useRef(filter);
   useEffect(() => {
     filterRef.current = filter;
@@ -120,6 +155,38 @@ export default function MusicPicker({
     }, SEARCH_DELAY_MS);
     return () => clearTimeout(timer);
   }, [termInput]);
+
+  // Suggestions : image du 1er média réduite (navigateur), puis notre serveur (qui interroge Epidemic Sound).
+  // 10 s au plus ; en cas d'erreur, la section disparaît sans message (la recherche reste utilisable).
+  useEffect(() => {
+    if (!open || tab !== "epidemic" || !suggestKey || suggestions?.key === suggestKey) return;
+    const context = suggestRef.current;
+    if (!context) return;
+    const key = suggestKey;
+    const controller = new AbortController();
+    const hide = () => setSuggestions({ key, status: "hidden", tracks: [], basis: "popular" });
+    const timer = setTimeout(() => {
+      controller.abort();
+      hide();
+    }, SUGGESTION_TIMEOUT_MS);
+    (async () => {
+      const image = context.source ? await captureSuggestionImage(context.source) : null;
+      if (controller.signal.aborted) return;
+      const result = await fetchEpidemicSuggestions({ image, kind: image ? context.kind : null, sport: context.sport, text: context.text }, controller.signal);
+      if (controller.signal.aborted) return;
+      clearTimeout(timer);
+      setSuggestions({ key, status: result.tracks.length > 0 ? "ready" : "hidden", tracks: result.tracks, basis: result.basis });
+    })().catch((err: unknown) => {
+      if (controller.signal.aborted) return;
+      clearTimeout(timer);
+      console.warn("Suggestions de musique indisponibles :", err);
+      hide();
+    });
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [open, tab, suggestKey, suggestions?.key]);
 
   // Première page pour le filtre courant : dès l'ouverture, sans rien taper (morceaux populaires), puis à chaque
   // recherche ou filtre. 10 s au plus (lib/music.ts) : ensuite « indisponible » avec « Réessayer ».
@@ -194,7 +261,7 @@ export default function MusicPicker({
       selected ? "border-accent-ink bg-accent-ink/10 text-accent-ink" : "border-line bg-surface hover:border-accent-ink"
     }`;
   const searchClass =
-    "mt-3 min-h-11 w-full rounded-full border border-accent-ink/40 bg-surface px-4 text-base text-foreground outline-none placeholder:text-subtle focus:border-accent-ink";
+    "mt-1 min-h-11 w-full rounded-full border border-accent-ink/40 bg-surface px-4 text-base text-foreground outline-none placeholder:text-subtle focus:border-accent-ink";
 
   if (!mounted) return null;
   return createPortal(
@@ -255,6 +322,33 @@ export default function MusicPicker({
 
         {tab === "epidemic" ? (
           <>
+            <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {/* Suggestions pour ta publication (avant la recherche manuelle) */}
+            {suggestKey &&
+              !termInput &&
+              !filter.term &&
+              !filter.mood &&
+              !filter.collection &&
+              !(suggestions?.key === suggestKey && suggestions.status === "hidden") && (
+                <section aria-labelledby="suggestions-titre" aria-busy={suggestions?.key !== suggestKey} className="mb-3 rounded-2xl border border-accent-ink/30 p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                    <h3 id="suggestions-titre" className="text-sm font-bold">
+                      {t("music.suggestions")}
+                    </h3>
+                    {suggestions?.key === suggestKey && suggestions.status === "ready" && (
+                      <span className="text-[11px] font-semibold text-muted">{t(BASIS_LABEL[suggestions.basis])}</span>
+                    )}
+                  </div>
+                  {suggestions?.key === suggestKey && suggestions.status === "ready" ? (
+                    <TrackList tracks={suggestions.tracks} preview={preview} onPreview={togglePreview} onChoose={choose} />
+                  ) : (
+                    <div className="mt-2">
+                      <ListSkeleton />
+                    </div>
+                  )}
+                </section>
+              )}
+            <div className="sticky top-0 z-10 bg-background pb-1">
             <label htmlFor="music-search-es" className="sr-only">
               {t("music.search")}
             </label>
@@ -303,8 +397,9 @@ export default function MusicPicker({
                 </ul>
               </div>
             )}
+            </div>
 
-            <div className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <div className="mt-1">
               {list.status === "loading" && <ListSkeleton />}
               {list.status === "error" && (
                 <div role="alert" className="flex flex-col items-start gap-3 py-4">
@@ -345,6 +440,7 @@ export default function MusicPicker({
                   )}
                 </>
               )}
+            </div>
             </div>
             {/* Mention de la source (aucune règle d'attribution précise trouvée dans la documentation de l'API) */}
             <p className="mt-2 text-center text-[11px] font-semibold text-muted">{t("music.byEpidemic")}</p>

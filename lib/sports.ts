@@ -307,3 +307,89 @@ const BY_ID = new Map<string, LegacySport>(SPORT_ROWS.map(([id, fr, en]) => [id,
 export function getLegacySport(id: string): LegacySport | undefined {
   return BY_ID.get(id);
 }
+
+// ---------- Ambiances musicales par sport (suggestions de musique Epidemic Sound) ----------
+// Mots-clés ANGLAIS envoyés à la recherche Epidemic Sound selon le sport de la publication (posts.sport).
+// Clés : identifiant du catalogue (sports.slug) OU nom du sport, sans accents, en minuscules, mots séparés par des
+// tirets (comme lib/sportImages.ts), car l'identifiant du catalogue peut différer de la liste ci-dessus.
+const SPORT_MOODS: Record<string, string[]> = {
+  hockey: ["energetic", "rock", "intense"],
+  "floor-hockey": ["energetic", "rock", "intense"],
+  "hockey-cosom": ["energetic", "rock", "intense"],
+  ringette: ["energetic", "upbeat", "rock"],
+  ringuette: ["energetic", "upbeat", "rock"],
+  lacrosse: ["energetic", "rock", "intense"],
+  crosse: ["energetic", "rock", "intense"],
+  basketball: ["hip hop", "energetic", "confident"],
+  volleyball: ["summer", "pop", "energetic"],
+  "beach-volleyball": ["summer", "pop", "happy"],
+  soccer: ["energetic", "anthem", "upbeat"],
+  football: ["epic", "intense", "hip hop"],
+  rugby: ["epic", "intense", "rock"],
+  baseball: ["upbeat", "feel good", "rock"],
+  softball: ["upbeat", "feel good", "pop"],
+  "balle-molle": ["upbeat", "feel good", "pop"],
+  handball: ["energetic", "intense", "rock"],
+  ultimate: ["summer", "indie", "upbeat"],
+  "ultimate-frisbee": ["summer", "indie", "upbeat"],
+  cricket: ["upbeat", "feel good", "summer"],
+  tennis: ["focused", "upbeat", "electronic"],
+  "table-tennis": ["fast", "playful", "electronic"],
+  "tennis-de-table": ["fast", "playful", "electronic"],
+  badminton: ["fast", "upbeat", "pop"],
+  pickleball: ["happy", "summer", "pop"],
+  golf: ["calm", "relaxing", "chill"],
+  "alpine-skiing": ["epic", "adrenaline", "rock"],
+  "ski-alpin": ["epic", "adrenaline", "rock"],
+  "cross-country-skiing": ["winter", "inspiring", "acoustic"],
+  "ski-de-fond": ["winter", "inspiring", "acoustic"],
+  snowboarding: ["adrenaline", "punk", "energetic"],
+  "planche-a-neige": ["adrenaline", "punk", "energetic"],
+  "ice-skating": ["elegant", "cinematic", "dreamy"],
+  patinage: ["elegant", "cinematic", "dreamy"],
+  "figure-skating": ["elegant", "classical", "dreamy"],
+  "patinage-artistique": ["elegant", "classical", "dreamy"],
+  curling: ["quirky", "calm", "folk"],
+  boxing: ["aggressive", "hip hop", "intense"],
+  boxe: ["aggressive", "hip hop", "intense"],
+  "martial-arts": ["intense", "epic", "drums"],
+  "arts-martiaux": ["intense", "epic", "drums"],
+  judo: ["intense", "epic", "drums"],
+  wrestling: ["aggressive", "intense", "rock"],
+  lutte: ["aggressive", "intense", "rock"],
+  climbing: ["inspiring", "cinematic", "adventure"],
+  escalade: ["inspiring", "cinematic", "adventure"],
+  hiking: ["adventure", "acoustic", "uplifting"],
+  randonnee: ["adventure", "acoustic", "uplifting"],
+  running: ["running", "motivational", "electronic"],
+  "course-a-pied": ["running", "motivational", "electronic"],
+  cycling: ["driving", "electronic", "energetic"],
+  "cyclisme-sur-route": ["driving", "electronic", "energetic"],
+  velo: ["driving", "electronic", "energetic"],
+  swimming: ["uplifting", "electronic", "summer"],
+  natation: ["uplifting", "electronic", "summer"],
+  "strength-training": ["workout", "hip hop", "aggressive"],
+  musculation: ["workout", "hip hop", "aggressive"],
+  crossfit: ["workout", "intense", "rock"],
+  yoga: ["calm", "meditation", "ambient"],
+  dance: ["dance", "pop", "upbeat"],
+  danse: ["dance", "pop", "upbeat"],
+  kayaking: ["adventure", "acoustic", "summer"],
+  kayak: ["adventure", "acoustic", "summer"],
+  surfing: ["surf", "summer", "indie"],
+  surf: ["surf", "summer", "indie"],
+  "horse-riding": ["cinematic", "country", "inspiring"],
+  equitation: ["cinematic", "country", "inspiring"],
+  skateboarding: ["punk", "hip hop", "lo-fi"],
+  "planche-a-roulettes": ["punk", "hip hop", "lo-fi"],
+};
+
+function sportKey(value: string): string {
+  return normalizeSearch(value).replace(/[\s_]+/g, "-");
+}
+
+// Mots-clés d'ambiance pour un sport (identifiant du catalogue, puis nom) ; [] si le sport n'est pas dans la liste
+export function sportMoodKeywords(slug: string | null | undefined, name = ""): string[] {
+  if (!slug && !name) return [];
+  return SPORT_MOODS[sportKey(slug ?? "")] ?? (name ? SPORT_MOODS[sportKey(name)] : undefined) ?? [];
+}
