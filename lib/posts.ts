@@ -22,12 +22,14 @@ export const POST_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
 export const POST_IMAGE_MAX_INPUT_BYTES = 20 * 1024 * 1024; // avant compression (le stockage accepte 5 Mo après)
 
 export const POST_COLUMNS =
-  "id, author_id, body, media, image_urls, video_url, video_poster_url, video_duration_s, music_provider, music_external_id, music_track_id, music_start_s, music_volume, original_sound, original_volume, sport, event_id, created_at, edited_at";
+  "id, author_id, kind, body, media, image_urls, video_url, video_poster_url, video_duration_s, music_provider, music_external_id, music_track_id, music_start_s, music_volume, original_sound, original_volume, sport, event_id, created_at, edited_at";
 export const COMMENT_COLUMNS = "id, post_id, author_id, body, created_at";
 
 export type PostRow = {
   id: string;
   author_id: string;
+  // 'post' (photos, texte, carrousel) ou 'video' (une vidéo verticale plein écran, façon Reels) ; défaut 'post'
+  kind?: "post" | "video" | null;
   body: string | null;
   // Liste ordonnée des photos et vidéos (posts.media). Vide ou absente pour les anciennes publications :
   // lire avec postMedia(), qui la reconstruit à partir de video_url et image_urls
@@ -152,6 +154,16 @@ export async function fetchFeedPage(supabase: SupabaseClient, query: FeedQuery):
   const { data, error } = await request;
   if (error) throw new Error(`Lecture des publications impossible : ${error.message} (code ${error.code})`);
   return (data ?? []) as PostRow[];
+}
+
+// Publications d'une personne (posts + vidéos), telles que la base me laisse les voir ; 0 en cas d'erreur
+export async function fetchPostCount(supabase: SupabaseClient, authorId: string): Promise<number> {
+  const { count, error } = await supabase.from("posts").select("id", { count: "exact", head: true }).eq("author_id", authorId);
+  if (error) {
+    console.error(`Comptage des publications impossible : ${error.message} (code ${error.code})`);
+    return 0;
+  }
+  return count ?? 0;
 }
 
 // Personnes que je suis (abonnement accepté)

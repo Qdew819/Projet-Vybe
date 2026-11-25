@@ -33,13 +33,24 @@ const iconProps = {
 // Fil de vidéos plein écran façon Reels : une vidéo par écran, défilement aimanté, lecture automatique de la vidéo
 // visible à plus de 70 %. Seules la vidéo courante, la précédente et les deux suivantes sont montées.
 // sport : filtre venu de l'accueil (/videos?sport=<valeur>), null : tous les sports
-export default function VideoFeed({ startId, sport: sportFilter = null }: { startId: string | null; sport?: string | null }) {
+// author : pseudo de la personne dont on ne montre que les vidéos (profil), null : tout le monde
+export default function VideoFeed({
+  startId,
+  sport: sportFilter = null,
+  author = null,
+}: {
+  startId: string | null;
+  sport?: string | null;
+  author?: string | null;
+}) {
   const router = useRouter();
   const t = useT();
   const { state: catalog } = useSportsCatalog();
   const soundWanted = useSoundOn();
 
   const [me, setMe] = useState("");
+  // Personne du filtre ?author : identifiant résolu depuis son pseudo ("" tant qu'il n'est pas connu, null sans filtre)
+  const [authorId, setAuthorId] = useState<string | null>(author ? "" : null);
   const [tab, setTab] = useState<FeedTab>("forYou");
   const [attempt, setAttempt] = useState(0);
   const [phase, setPhase] = useState<Phase>("loading");
@@ -76,10 +87,26 @@ export default function VideoFeed({ startId, sport: sportFilter = null }: { star
     createClient()
       .auth.getUser()
       .then(({ data }) => {
-        if (!data.user) router.replace("/connexion");
-        else setMe(data.user.id);
+        if (!data.user) {
+          router.replace("/connexion");
+          return;
+        }
+        if (!author) {
+          setMe(data.user.id);
+          return;
+        }
+        // Pseudo → identifiant ; introuvable (ou caché par les règles d'accès) : fil vide
+        void createClient()
+          .from("profiles")
+          .select("id")
+          .eq("username", author.toLowerCase())
+          .maybeSingle()
+          .then(({ data: row }) => {
+            setAuthorId(row?.id ? String(row.id) : "00000000-0000-0000-0000-000000000000");
+            setMe(data.user.id);
+          });
       });
-  }, [router]);
+  }, [router, author]);
 
   // Lot suivant pour le curseur donné (ignoré si l'onglet a changé entre-temps)
   const loadMore = useCallback(
@@ -115,13 +142,13 @@ export default function VideoFeed({ startId, sport: sportFilter = null }: { star
 
   // Premier lot : à l'ouverture, au changement d'onglet, après « Réessayer » ou « Revoir depuis le début »
   useEffect(() => {
-    if (!me) return;
-    const cursor = newCursor(tab, startId, sportFilter);
+    if (!me || authorId === "") return;
+    const cursor = newCursor(tab, startId, sportFilter, authorId);
     cursorRef.current = cursor;
     loadingRef.current = false;
     // Lancé hors du corps de l'effet : les états ne changent qu'à l'arrivée des données
     void Promise.resolve().then(() => loadMore(cursor));
-  }, [me, tab, startId, sportFilter, attempt, loadMore]);
+  }, [me, tab, startId, sportFilter, authorId, attempt, loadMore]);
 
   // Suite du fil quand on approche de la fin
   useEffect(() => {
@@ -382,22 +409,26 @@ export default function VideoFeed({ startId, sport: sportFilter = null }: { star
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
-          <div role="tablist" aria-label={t("reels.feedLabel")} className="pointer-events-auto flex gap-1 rounded-full bg-black/40 p-1 backdrop-blur-sm">
-            {(["forYou", "following"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={tab === value}
-                onClick={() => value !== tab && reset(value)}
-                className={`min-h-9 rounded-full px-4 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-white ${
-                  tab === value ? "bg-[#39ff14] text-black" : "text-white/80 hover:text-white"
-                }`}
-              >
-                {value === "forYou" ? t("feed.forYou") : t("feed.following")}
-              </button>
-            ))}
-          </div>
+          {author ? (
+            <p className="pointer-events-auto rounded-full bg-black/40 px-4 py-2 text-sm font-bold text-white backdrop-blur-sm">@{author}</p>
+          ) : (
+            <div role="tablist" aria-label={t("reels.feedLabel")} className="pointer-events-auto flex gap-1 rounded-full bg-black/40 p-1 backdrop-blur-sm">
+              {(["forYou", "following"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === value}
+                  onClick={() => value !== tab && reset(value)}
+                  className={`min-h-9 rounded-full px-4 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-white ${
+                    tab === value ? "bg-[#39ff14] text-black" : "text-white/80 hover:text-white"
+                  }`}
+                >
+                  {value === "forYou" ? t("feed.forYou") : t("feed.following")}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             type="button"
             onClick={toggleSound}

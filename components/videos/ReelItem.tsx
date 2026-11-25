@@ -14,7 +14,7 @@ import { PostMenu } from "../PostCard";
 import ReportDialog, { type ReportReason } from "../ReportDialog";
 import ShareButton from "../ShareButton";
 import { formatEventDate } from "../../lib/events";
-import { framedMediaStyle, type Framing } from "../../lib/framing";
+import { VERTICAL_FRAME_RATIO, frameOf, framedMediaStyle, type Framing } from "../../lib/framing";
 import type { MediaOverlay } from "../../lib/overlayData";
 import { followUser, type FollowStatus } from "../../lib/follows";
 import { useLanguage, useT } from "../../lib/i18n";
@@ -404,7 +404,11 @@ function LiveReel({
         {videos.map((item, index) => {
           const fit = fits[index] ?? "cover";
           // Cadrage ou textes : la vidéo s'affiche dans un cadre 4:5 centré (mêmes positions que dans l'éditeur)
-          const framed = item.framing?.aspect ? item.framing : item.overlays ? { mode: "fill" as const, scale: 1, x: 0, y: 0, background: "black" as const } : null;
+          const framed = item.framing?.aspect
+            ? item.framing
+            : item.overlays
+              ? { mode: "fill" as const, scale: 1, x: 0, y: 0, background: "black" as const, frame: post.kind === "video" ? VERTICAL_FRAME_RATIO : undefined }
+              : null;
           const written = textAlt(item.overlays);
           const framedStyle = framed?.aspect ? framedMediaStyle(framed, framed.aspect) : undefined;
           return (
@@ -768,7 +772,7 @@ function FramedBox({
 }) {
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-      <div className="relative aspect-[4/5] w-[min(100%,calc(100dvh*0.8))] overflow-hidden bg-black">
+      <div className="relative overflow-hidden bg-black" style={{ aspectRatio: frameOf(framing), width: `min(100%, calc(100dvh * ${frameOf(framing)}))` }}>
         <FramedBackground framing={framing} poster={poster} />
         {children}
         {overlays && <TextOverlayLayer blocks={fromOverlays(overlays)} />}

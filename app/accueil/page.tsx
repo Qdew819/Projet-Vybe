@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } fr
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import AppShell from "../../components/AppShell";
+import AppShell, { useOpenCreateSheet } from "../../components/AppShell";
 import Avatar from "../../components/Avatar";
 import NotificationBell from "../../components/NotificationBell";
 import HomeEvents from "../../components/home/HomeEvents";
@@ -263,11 +263,12 @@ function AccueilContent() {
       >
         <ul className="flex w-max gap-3 px-4 pb-1 pt-1">
           <li>
-            <Shortcut href="/publier" label={t("create.post")}>
+            {/* « Publier » : choix du type (Post ou Vidéo) dans la feuille « Créer » */}
+            <ShortcutButton label={t("create.post")}>
               <svg aria-hidden="true" viewBox="0 0 24 24" className="h-8 w-8 text-accent-ink" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round">
                 <path d="M12 5v14M5 12h14" />
               </svg>
-            </Shortcut>
+            </ShortcutButton>
           </li>
           <li>
             <Shortcut href="/evenements" label={t("nav.events")}>
@@ -476,6 +477,18 @@ function Shortcut({
       )}
       <span className="w-full truncate text-[11px] font-semibold leading-tight">{label}</span>
     </Link>
+  );
+}
+
+// Raccourci rond qui ouvre la feuille « Créer » (choix Post / Vidéo) au lieu d'aller à une page.
+// Le hook est appelé ici : il doit l'être à l'intérieur d'AppShell, qui fournit la feuille.
+function ShortcutButton({ label, children }: { label: string; children: ReactNode }) {
+  const openCreate = useOpenCreateSheet();
+  return (
+    <button type="button" onClick={openCreate} aria-haspopup="dialog" className={shortcutBase}>
+      <span className={`${circle} border-accent group-hover:border-accent-ink`}>{children}</span>
+      <span className="w-full truncate text-[11px] font-semibold leading-tight">{label}</span>
+    </button>
   );
 }
 

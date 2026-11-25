@@ -7,6 +7,8 @@ import { EMPTY_STATS, POST_COLUMNS, fetchFollowingIds, loadPostDetails, type Pos
 // « Pour toi » : la vidéo touchée (?start), puis les vidéos populaires (popular_videos(30)), puis les plus récentes.
 // « Abonnements » : vidéos des personnes que je suis (abonnement accepté), plus récentes d'abord.
 // ?sport=<valeur de posts.sport> (filtre de l'accueil) : les deux onglets ne montrent que les vidéos de ce sport.
+// ?author=<pseudo> (profil, onglet Vidéos) : seulement les vidéos de cette personne, en commençant par ?start.
+// Toujours et seulement les publications kind = 'video' (popular_videos ne renvoie déjà que celles-là).
 // Pour chaque lot : un seul post_stats, une seule lecture des profils, des événements liés et de mes abonnements.
 
 export const REEL_BATCH = 8;
@@ -27,6 +29,7 @@ export type Reel = {
 export type FeedCursor = {
   tab: FeedTab;
   sport: string | null; // filtre (posts.sport), null : tous les sports
+  authorId: string | null; // vidéos d'une seule personne (profil), null : tout le monde
   startId: string | null;
   startDone: boolean;
   popular: PostRow[] | null; // vidéos populaires lues une fois, servies au fur et à mesure
@@ -37,11 +40,12 @@ export type FeedCursor = {
   done: boolean;
 };
 
-export function newCursor(tab: FeedTab, startId: string | null, sport: string | null = null): FeedCursor {
+export function newCursor(tab: FeedTab, startId: string | null, sport: string | null = null, authorId: string | null = null): FeedCursor {
   return {
     tab,
     sport,
-    startId: tab === "forYou" ? startId : null,
+    authorId,
+    startId: tab === "forYou" || authorId ? startId : null,
     startDone: false,
     popular: null,
     recentBefore: null,
@@ -57,7 +61,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Vidéo de départ, par son id. Introuvable, invisible pour moi ou sans vidéo : null (on l'ignore)
 export async function fetchStartVideo(supabase: SupabaseClient, id: string): Promise<PostRow | null> {
   if (!UUID.test(id)) return null;
-  const { data, error } = await supabase.from("posts").select(POST_COLUMNS).eq("id", id).maybeSingle();
+  const { data, error } = await supabase.from("posts").select(POST_COLUMNS).eq("id", id).eq("kind", "video").maybeSingle();
   if (error) {
     console.error(`Lecture de la vidéo de départ impossible : ${error.message} (code ${error.code})`);
     return null;
@@ -84,6 +88,7 @@ async function fetchRecent(
       .limit(REEL_BATCH);
     if (authors) request = request.in("author_id", authors);
     if (cursor.sport) request = request.eq("sport", cursor.sport);
+    request = request.eq("kind", "video");
     if (cursor.recentBefore) request = request.lt("created_at", cursor.recentBefore);
     const { data, error } = await request;
     if (error) throw new Error(`Lecture des vidéos récentes impossible : ${error.message} (code ${error.code})`);
@@ -108,6 +113,24 @@ export async function fetchNextReels(
   onStart?: (post: PostRow) => void
 ): Promise<PostRow[]> {
   const batch: PostRow[] = [];
+
+  // Vidéos d'une seule personne (profil) : la vidéo touchée d'abord, puis ses autres vidéos, plus récentes d'abord
+  if (cursor.authorId) {
+    if (!cursor.startDone) {
+      cursor.startDone = true;
+      if (cursor.startId) {
+        const start = await fetchStartVideo(supabase, cursor.startId);
+        if (start && start.author_id === cursor.authorId) {
+          cursor.seen.add(start.id);
+          batch.push(start);
+          onStart?.(start);
+        }
+      }
+    }
+    batch.push(...(await fetchRecent(supabase, cursor, REEL_BATCH - batch.length, [cursor.authorId])));
+    if (cursor.recentDone && batch.length < REEL_BATCH) cursor.done = true;
+    return batch;
+  }
 
   if (cursor.tab === "following") {
     if (!cursor.following) cursor.following = await fetchFollowingIds(supabase, me);

@@ -28,6 +28,7 @@ function VideosFromParams() {
   const params = useSearchParams();
   const start = params.get("start");
   const sport = params.get("sport") || null;
-  // Nouvelle vidéo de départ ou nouveau sport : on repart d'un fil neuf
-  return <VideoFeed key={`${start ?? ""}|${sport ?? ""}`} startId={start} sport={sport} />;
+  const author = params.get("author") || null; // vidéos d'une seule personne (onglet Vidéos du profil)
+  // Nouvelle vidéo de départ, nouveau sport ou nouvelle personne : on repart d'un fil neuf
+  return <VideoFeed key={`${start ?? ""}|${sport ?? ""}|${author ?? ""}`} startId={start} sport={sport} author={author} />;
 }

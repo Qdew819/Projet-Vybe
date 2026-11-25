@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useT, type MessageKey } from "../lib/i18n";
 
 const TABS: { id: string; label: MessageKey }[] = [
@@ -12,8 +12,8 @@ const TABS: { id: string; label: MessageKey }[] = [
 
 // Onglets du profil (Publications, Événements, Favoris, Activité).
 // Clavier : flèches gauche/droite, Début et Fin changent d'onglet ; Tab passe au contenu.
-// Pour l'instant, chaque onglet affiche « Bientôt ».
-export default function ProfileTabs() {
+// « Publications » : sous-onglets Posts / Vidéos (publications) ; les autres onglets affichent encore « Bientôt ».
+export default function ProfileTabs({ publications }: { publications?: ReactNode }) {
   const t = useT();
   const baseId = useId();
   const [active, setActive] = useState(0);
@@ -71,9 +71,13 @@ export default function ProfileTabs() {
           aria-labelledby={`${baseId}-tab-${tab.id}`}
           hidden={index !== active}
           tabIndex={0}
-          className="flex min-h-40 items-center justify-center text-sm font-semibold text-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-ink"
+          className={
+            tab.id === "publications" && publications
+              ? "pb-6 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-ink"
+              : "flex min-h-40 items-center justify-center text-sm font-semibold text-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-ink"
+          }
         >
-          {t("common.soon")}
+          {tab.id === "publications" && publications ? publications : t("common.soon")}
         </div>
       ))}
     </div>

@@ -70,10 +70,10 @@ function waitFor(video: HTMLVideoElement, event: string, timeout = READ_TIMEOUT_
 }
 
 // Image à ~0,5 s, largeur 720 px au maximum, JPEG qualité 0,8 (null si le navigateur refuse : la vidéo reste publiable)
-async function capturePoster(video: HTMLVideoElement): Promise<Blob | null> {
+async function capturePoster(video: HTMLVideoElement, at: number = POSTER_AT_SECONDS): Promise<Blob | null> {
   try {
     if (video.readyState < 2) await waitFor(video, "loadeddata");
-    const target = Math.min(POSTER_AT_SECONDS, video.duration / 2);
+    const target = Math.max(0, Math.min(at, Math.max(0, video.duration - 0.05)));
     if (Math.abs(video.currentTime - target) > 0.01) {
       const seeked = waitFor(video, "seeked");
       video.currentTime = target;
@@ -90,6 +90,30 @@ async function capturePoster(video: HTMLVideoElement): Promise<Blob | null> {
   } catch (err) {
     console.error("Capture de l'affiche impossible :", err);
     return null;
+  }
+}
+
+// Miniature choisie (curseur de /publier, mode Vidéo) : image de la vidéo à l'instant « at » (secondes).
+// Fonctionne avec un fichier local ou une vidéo déjà en ligne (Storage Supabase : en-têtes CORS).
+export async function captureFrameAt(source: File | string, at: number): Promise<Blob | null> {
+  const local = typeof source !== "string";
+  const url = local ? URL.createObjectURL(source) : source;
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "auto";
+  if (!local) video.crossOrigin = "anonymous";
+  try {
+    const metadata = waitFor(video, "loadedmetadata");
+    video.src = url;
+    await metadata;
+    return await capturePoster(video, at);
+  } catch {
+    return null;
+  } finally {
+    video.removeAttribute("src");
+    video.load();
+    if (local) URL.revokeObjectURL(url);
   }
 }
 
@@ -174,7 +198,8 @@ const MEDIA_UPLOAD_CONCURRENCY = 3;
 
 export type MediaDraft =
   // Élément déjà en ligne (modification d'une publication) : gardé tel quel, rien n'est envoyé
-  | { kind: "existing"; item: MediaItem }
+  // newPoster : nouvelle miniature choisie pour une vidéo déjà en ligne (envoyée, puis remplace l'ancienne)
+  | { kind: "existing"; item: MediaItem; newPoster?: Blob | null }
   // source : photo de base (non recadrée, sans texte) envoyée aussi quand la photo a été modifiée dans l'éditeur
   | { kind: "image"; blob: Blob; alt?: string; source?: Blob | null; framing?: Framing | null; overlays?: MediaOverlay[] | null }
   | { kind: "video"; file: File; duration: number; poster: Blob | null; framing?: Framing | null; overlays?: MediaOverlay[] | null };
@@ -196,7 +221,12 @@ export async function uploadPostMedia(
   let failure: unknown = null;
 
   async function send(draft: MediaDraft): Promise<MediaItem> {
-    if (draft.kind === "existing") return draft.item;
+    if (draft.kind === "existing") {
+      if (draft.item.type !== "video" || !draft.newPoster) return draft.item;
+      const uploaded = await uploadPoster(supabase, userId, crypto.randomUUID(), draft.newPoster);
+      imagePaths.push(uploaded.path);
+      return { ...draft.item, poster: uploaded.url };
+    }
     if (draft.kind === "image") {
       const image = await uploadPostImage(supabase, userId, draft.blob);
       imagePaths.push(image.path);

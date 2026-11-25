@@ -18,9 +18,13 @@ export type Framing = {
   y: number;
   background: "black" | "blur";
   aspect?: number;
+  // Cadre (largeur / hauteur) : 4:5 par défaut (carrousel des posts) ; 9:16 pour les vidéos verticales (kind = 'video')
+  frame?: number;
 };
 
-export const FRAME_RATIO = 4 / 5; // largeur / hauteur du cadre
+export const FRAME_RATIO = 4 / 5; // largeur / hauteur du cadre des posts (carrousel)
+export const VERTICAL_FRAME_RATIO = 9 / 16; // vidéos verticales façon Reels
+export const frameOf = (framing: Pick<Framing, "frame"> | null | undefined) => framing?.frame ?? FRAME_RATIO;
 export const MIN_SCALE = 1;
 export const MAX_SCALE = 4;
 export const DEFAULT_FRAMING: Framing = { mode: "fill", scale: 1, x: 0, y: 0, background: "black" };
@@ -28,17 +32,17 @@ export const DEFAULT_FRAMING: Framing = { mode: "fill", scale: 1, x: 0, y: 0, ba
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 // Taille de base du média dans le cadre (fraction de la largeur et de la hauteur du cadre), avant le zoom
-export function baseSize(mode: Framing["mode"], aspect: number): { w: number; h: number } {
-  const wider = aspect > FRAME_RATIO;
-  if (mode === "fill") return wider ? { w: aspect / FRAME_RATIO, h: 1 } : { w: 1, h: FRAME_RATIO / aspect };
-  return wider ? { w: 1, h: FRAME_RATIO / aspect } : { w: aspect / FRAME_RATIO, h: 1 };
+export function baseSize(mode: Framing["mode"], aspect: number, frame = FRAME_RATIO): { w: number; h: number } {
+  const wider = aspect > frame;
+  if (mode === "fill") return wider ? { w: aspect / frame, h: 1 } : { w: 1, h: frame / aspect };
+  return wider ? { w: 1, h: frame / aspect } : { w: aspect / frame, h: 1 };
 }
 
 // Décalage maximum (en % du cadre) pour que le média ne laisse jamais de vide (Remplir) ou ne sorte pas du cadre
 // (Ajuster, sans zoom)
 export function clampFraming(framing: Framing, aspect: number): Framing {
   const scale = clampNumber(framing.scale, MIN_SCALE, MAX_SCALE);
-  const { w, h } = baseSize(framing.mode, aspect);
+  const { w, h } = baseSize(framing.mode, aspect, frameOf(framing));
   const maxX = (Math.abs(w * scale - 1) / 2) * 100;
   const maxY = (Math.abs(h * scale - 1) / 2) * 100;
   return { ...framing, scale, x: clampNumber(framing.x, -maxX, maxX), y: clampNumber(framing.y, -maxY, maxY) };
@@ -58,6 +62,7 @@ export function parseFraming(value: unknown): Framing | null {
     y: clampNumber(num(raw.y, 0), -300, 300),
     background: raw.background === "blur" ? "blur" : "black",
     ...(Number.isFinite(aspect) && aspect > 0 ? { aspect } : {}),
+    ...(typeof raw.frame === "number" && raw.frame > 0.3 && raw.frame < 2 ? { frame: raw.frame } : {}),
   };
 }
 
@@ -66,7 +71,7 @@ export function parseFraming(value: unknown): Framing | null {
 // clamp = false : pendant un glissement dans l'éditeur (le média se recale au relâchement)
 export function framedMediaStyle(framing: Framing, aspect: number, clamp = true): CSSProperties {
   const f = clamp ? clampFraming(framing, aspect) : { ...framing, scale: clampNumber(framing.scale, MIN_SCALE, MAX_SCALE) };
-  const { w, h } = baseSize(f.mode, aspect);
+  const { w, h } = baseSize(f.mode, aspect, frameOf(f));
   return {
     position: "absolute",
     left: `calc(50% + ${f.x}%)`,
@@ -116,7 +121,7 @@ export async function renderFramedImage(
 ): Promise<Blob> {
   const aspect = bitmap.width / bitmap.height;
   const f = clampFraming(framing, aspect);
-  const { w, h } = baseSize(f.mode, aspect);
+  const { w, h } = baseSize(f.mode, aspect, frameOf(f));
   // Largeur du cadre telle que le média ne soit jamais agrandi : (w × scale × W) ≤ largeur d'origine
   const W = Math.max(1, Math.min(OUTPUT_MAX_WIDTH, Math.floor(bitmap.width / (w * f.scale))));
   const H = Math.round(W / FRAME_RATIO);

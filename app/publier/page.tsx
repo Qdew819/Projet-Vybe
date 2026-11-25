@@ -6,7 +6,9 @@ import Avatar from "../../components/Avatar";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import MediaCarousel from "../../components/MediaCarousel";
 import MediaEditor from "../../components/publish/MediaEditor";
-import type { Framing } from "../../lib/framing";
+import { FRAME_RATIO, VERTICAL_FRAME_RATIO, framedMediaStyle, type Framing } from "../../lib/framing";
+import FramedBackground from "../../components/FramedBackground";
+import TextOverlayLayer from "../../components/TextOverlayLayer";
 import { drawTextBlocks, textAlt, toOverlays, type TextBlock } from "../../lib/textOverlay";
 import SoundSection, { DEFAULT_SOUND, type SoundChoice } from "../../components/music/SoundSection";
 import { EVENT_COLUMNS, fetchMyStatuses, formatEventDate, type EventRow } from "../../lib/events";
@@ -42,6 +44,8 @@ import {
   VIDEO_ACCEPT,
   VIDEO_MAX_BYTES,
   VIDEO_MAX_SECONDS,
+  captureFrameAt,
+  formatDuration,
   legacyColumns,
   readVideo,
   removeMediaFiles,
@@ -78,6 +82,8 @@ type Draft =
       aspect: number | null;
       poster: Blob | null;
       posterPreview: string | null;
+      posterChanged?: boolean; // miniature choisie avec le curseur (à envoyer, même pour une vidéo déjà en ligne)
+      posterAt?: number; // instant de la miniature (secondes)
       framing?: Framing;
       texts?: TextBlock[]; // textes par-dessus la vidéo (enregistrés dans posts.media, sans réencodage)
     };
@@ -128,6 +134,7 @@ function toMediaDraft(item: Draft): MediaDraft {
     const overlays = toOverlays(item.texts ?? []);
     return {
       kind: "existing",
+      newPoster: item.posterChanged ? item.poster : null,
       item: {
         type: "video",
         url: item.remote.url,
@@ -155,7 +162,12 @@ function snapshotOf(body: string, sport: string | null, eventId: string | null, 
     sport,
     eventId,
     sound: [sound.originalSound, sound.originalVolume, sound.track?.provider ?? null, sound.track?.id ?? null, sound.musicStart, sound.musicVolume],
-    items: items.map((item) => [item.id, item.framing ?? null, item.texts ?? null, item.kind === "image" ? Boolean(item.blob) : Boolean(item.file)]),
+    items: items.map((item) => [
+      item.id,
+      item.framing ?? null,
+      item.texts ?? null,
+      item.kind === "image" ? Boolean(item.blob) : Boolean(item.file) || Boolean(item.posterChanged),
+    ]),
   });
 }
 
@@ -163,6 +175,133 @@ async function fetchBlob(url: string): Promise<Blob> {
   const response = await fetch(url, { mode: "cors" });
   if (!response.ok) throw new Error(`Téléchargement impossible (${response.status})`);
   return response.blob();
+}
+
+// Mode Vidéo : aperçu vertical 9:16 (cadrage et textes compris), « Modifier », « Changer de vidéo », « × »,
+// et curseur de la miniature (image de la vidéo)
+function VideoModePreview({
+  item,
+  disabled,
+  posterBusy,
+  preparing,
+  onChoose,
+  onEdit,
+  onRemove,
+  onPosterAt,
+}: {
+  item: Extract<Draft, { kind: "video" }> | null;
+  disabled: boolean;
+  posterBusy: boolean;
+  preparing: boolean;
+  onChoose: () => void;
+  onEdit: (id: string) => void;
+  onRemove: (item: Draft) => void;
+  onPosterAt: (id: string, at: number) => void;
+}) {
+  const t = useT();
+  if (!item) {
+    return (
+      <div className="mb-3 flex flex-col items-center gap-2">
+        <button
+          type="button"
+          onClick={onChoose}
+          disabled={disabled || preparing}
+          className="flex aspect-[9/16] w-[min(100%,calc(55dvh*0.5625))] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-accent-ink/60 text-accent-ink transition-colors hover:border-accent-ink disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
+        >
+          <svg {...iconProps} className="h-10 w-10" strokeWidth={1.8}>
+            <path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <circle cx="12" cy="13" r="3.5" />
+          </svg>
+          <span className="text-sm font-bold">{preparing ? t("publish.videoPreparing") : t("publish.videoChoose")}</span>
+        </button>
+        <p className="text-center text-xs text-muted">{t("publish.videoHint")}</p>
+      </div>
+    );
+  }
+  const framing: Framing = { ...(item.framing ?? { mode: "fill", scale: 1, x: 0, y: 0, background: "black" }), frame: VERTICAL_FRAME_RATIO };
+  const aspect = item.framing?.aspect ?? item.aspect;
+  const duration = Math.max(0, item.duration);
+  return (
+    <div className="mb-3 flex flex-col items-center gap-3">
+      <div className="relative w-[min(100%,calc(55dvh*0.5625))] overflow-hidden rounded-2xl bg-black" style={{ aspectRatio: VERTICAL_FRAME_RATIO }}>
+        <FramedBackground framing={framing} poster={item.posterPreview} />
+        <video
+          src={item.preview}
+          poster={item.posterPreview ?? undefined}
+          muted
+          playsInline
+          autoPlay
+          loop
+          preload="metadata"
+          style={aspect ? framedMediaStyle(framing, aspect) : { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+        />
+        {item.texts && item.texts.length > 0 && <TextOverlayLayer blocks={item.texts} />}
+        <button
+          type="button"
+          onClick={() => onRemove(item)}
+          disabled={disabled}
+          aria-label={t("publish.removeVideo")}
+          className="absolute left-2 top-2 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-white"
+        >
+          <svg {...iconProps} className="h-5 w-5" strokeWidth={2.5}>
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => onEdit(item.id)}
+          disabled={disabled}
+          className="absolute left-14 top-2 z-10 flex h-11 items-center gap-1.5 rounded-full bg-black/60 px-3 text-sm font-bold text-white disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-white"
+        >
+          <svg {...iconProps} className="h-4 w-4" strokeWidth={2.2}>
+            <path d="M4 20h4L19 9l-4-4L4 16v4z" />
+            <path d="M13.5 6.5l4 4" />
+          </svg>
+          {t("editor.edit")}
+        </button>
+        <span className="pointer-events-none absolute bottom-2 right-2 z-10 rounded-md bg-black/75 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white">
+          {formatDuration(duration)}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={onChoose}
+        disabled={disabled || preparing}
+        className="min-h-11 rounded-full border-2 border-line px-5 text-sm font-bold transition-colors hover:border-accent-ink disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
+      >
+        {preparing ? t("publish.videoPreparing") : t("publish.videoReplace")}
+      </button>
+
+      {/* Miniature : une image de la vidéo, choisie avec le curseur */}
+      <div className="flex w-full items-center gap-3 rounded-2xl border-2 border-line bg-surface p-3">
+        <span className="relative h-20 shrink-0 overflow-hidden rounded-lg bg-black" style={{ aspectRatio: VERTICAL_FRAME_RATIO }} aria-busy={posterBusy}>
+          {item.posterPreview && (
+            // eslint-disable-next-line @next/next/no-img-element -- aperçu local de la miniature, recadré comme la vidéo
+            <img src={item.posterPreview} alt="" style={aspect ? framedMediaStyle(framing, aspect) : { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+          )}
+          {posterBusy && <span className="absolute inset-0 animate-pulse bg-white/20" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <label htmlFor="miniature" className="flex items-center justify-between text-xs font-semibold text-muted">
+            <span>{t("publish.thumbnail")}</span>
+            <span className="tabular-nums">{formatDuration(item.posterAt ?? 0)}</span>
+          </label>
+          <input
+            id="miniature"
+            type="range"
+            min={0}
+            max={Math.max(0.1, duration)}
+            step={0.1}
+            value={Math.min(item.posterAt ?? 0.5, duration)}
+            disabled={disabled}
+            onChange={(e) => onPosterAt(item.id, Number(e.target.value))}
+            className="h-11 w-full cursor-pointer accent-[#39ff14]"
+          />
+          <p className="text-[11px] leading-snug text-muted">{t("publish.thumbnailHint")}</p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const iconProps = {
@@ -205,6 +344,11 @@ export default function Publier() {
   const [error, setError] = useState("");
   // Mode édition (/publier?edit=<id>) : publication d'origine, état de départ (changements non enregistrés ?)
   const [editPost, setEditPost] = useState<PostRow | null>(null);
+  // Type de publication : « post » (photos, texte, carrousel) ou « video » (une vidéo verticale, façon Reels).
+  // Choisi dans la feuille « Créer » (/publier?type=video) ; en modification, celui de la publication (inchangé).
+  const [postType, setPostType] = useState<"post" | "video">("post");
+  const [posterBusy, setPosterBusy] = useState(false);
+  const posterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [initialSnapshot, setInitialSnapshot] = useState<string | null>(null);
   const [discardOpen, setDiscardOpen] = useState(false);
 
@@ -247,7 +391,9 @@ export default function Publier() {
       let events = [...mine, ...joined];
 
       // Mode édition : la publication doit être la mienne, sinon retour à la publication avec un message
-      const editId = new URLSearchParams(window.location.search).get("edit");
+      const params = new URLSearchParams(window.location.search);
+      const editId = params.get("edit");
+      setPostType(params.get("type") === "video" ? "video" : "post");
       if (editId) {
         const { data: row, error: readError } = await supabase.from("posts").select(POST_COLUMNS).eq("id", editId).maybeSingle();
         const post = row as PostRow | null;
@@ -310,6 +456,7 @@ export default function Publier() {
         setEventId(post.event_id);
         setSoundChoice(choice);
         setEditPost(post);
+        setPostType(post.kind === "video" ? "video" : "post");
         setInitialSnapshot(snapshotOf(post.body ?? "", post.sport, post.event_id, choice, drafts));
       }
 
@@ -348,7 +495,8 @@ export default function Publier() {
   }, [catalogState, mySportIds]);
 
   const videoCount = items.filter((item) => item.kind === "video").length;
-  const empty = body.trim().length === 0 && items.length === 0;
+  // Une vidéo (mode Vidéo) doit avoir sa vidéo ; un post, du texte ou au moins un élément
+  const empty = postType === "video" ? !items.some((item) => item.kind === "video") : body.trim().length === 0 && items.length === 0;
   const busy = publishing || preparing > 0 || videoPreparing > 0;
   const mediaFull = items.length + preparing + videoPreparing >= MAX_POST_MEDIA;
   const videosFull = mediaFull || videoCount + videoPreparing >= MAX_POST_VIDEOS;
@@ -396,8 +544,15 @@ export default function Publier() {
   async function addVideos(files: FileList | null) {
     if (!files) return;
     setMediaError("");
-    const roomAll = MAX_POST_MEDIA - items.length - preparing - videoPreparing;
-    const roomVideos = MAX_POST_VIDEOS - videoCount - videoPreparing;
+    // Mode Vidéo : UNE seule vidéo ; la nouvelle remplace l'ancienne
+    if (postType === "video") {
+      itemsRef.current.forEach(revokeDraft);
+      itemsRef.current = [];
+      setItems([]);
+    }
+    const single = postType === "video";
+    const roomAll = single ? 1 : MAX_POST_MEDIA - items.length - preparing - videoPreparing;
+    const roomVideos = single ? 1 : MAX_POST_VIDEOS - videoCount - videoPreparing;
     const room = Math.max(0, Math.min(roomAll, roomVideos));
     const chosen = Array.from(files);
     if (chosen.length > room) {
@@ -487,6 +642,26 @@ export default function Publier() {
     setEditBusy(false);
   }
 
+  // Miniature de la vidéo (mode Vidéo) : image prise à l'instant choisi, capturée après une courte pause du curseur
+  function choosePosterAt(id: string, at: number) {
+    updateItem(id, (d) => (d.kind === "video" ? { ...d, posterAt: at } : d));
+    if (posterTimer.current) clearTimeout(posterTimer.current);
+    posterTimer.current = setTimeout(async () => {
+      const item = itemsRef.current.find((d) => d.id === id);
+      if (!item || item.kind !== "video") return;
+      setPosterBusy(true);
+      const blob = await captureFrameAt(item.file ?? item.preview, at);
+      setPosterBusy(false);
+      if (!blob) return;
+      const posterPreview = URL.createObjectURL(blob);
+      updateItem(id, (d) => {
+        if (d.kind !== "video") return d;
+        revokeUrl(d.posterPreview);
+        return { ...d, poster: blob, posterPreview, posterChanged: true };
+      });
+    }, 250);
+  }
+
   function moveItem(id: string, delta: -1 | 1) {
     const list = [...itemsRef.current];
     const from = list.findIndex((item) => item.id === id);
@@ -573,7 +748,8 @@ export default function Publier() {
       return;
     }
 
-    const { data: created, error: insertError } = await supabase.from("posts").insert({ author_id: me.id, ...columns }).select("id").single();
+    // kind : « post » ou « video » (jamais changé en modification)
+    const { data: created, error: insertError } = await supabase.from("posts").insert({ author_id: me.id, kind: postType, ...columns }).select("id").single();
     if (insertError) {
       console.error(`Publication impossible : ${insertError.message} (code ${insertError.code})`);
       // Fichiers déjà envoyés mais publication refusée : on ne laisse pas de fichiers orphelins
@@ -617,7 +793,15 @@ export default function Publier() {
               <path d="M15 18l-6-6 6-6" />
             </svg>
           </button>
-          <h1 className="text-center text-lg font-bold">{editPost ? t("publish.editTitle") : t("publish.title")}</h1>
+          <h1 className="text-center text-lg font-bold">
+            {postType === "video"
+              ? editPost
+                ? t("publish.editVideoTitle")
+                : t("publish.videoTitle")
+              : editPost
+                ? t("publish.editTitle")
+                : t("publish.title")}
+          </h1>
           <button
             type="button"
             onClick={publish}
@@ -641,7 +825,7 @@ export default function Publier() {
               id="texte"
               rows={5}
               maxLength={POST_BODY_MAX}
-              placeholder={t("feed.whatsNew")}
+              placeholder={postType === "video" ? t("publish.caption") : t("feed.whatsNew")}
               value={body}
               onChange={(e) => {
                 setBody(e.target.value);
@@ -661,7 +845,19 @@ export default function Publier() {
           <h2 id="titre-photos" className="sr-only">
             {t("publish.photos")}
           </h2>
-          {items.length > 0 && (
+          {postType === "video" && (
+            <VideoModePreview
+              item={items.find((d): d is Extract<Draft, { kind: "video" }> => d.kind === "video") ?? null}
+              disabled={publishing}
+              posterBusy={posterBusy}
+              onChoose={() => videoInputRef.current?.click()}
+              onEdit={(id) => setEditingId(id)}
+              onRemove={(item) => removeItem(item)}
+              onPosterAt={choosePosterAt}
+              preparing={videoPreparing > 0}
+            />
+          )}
+          {postType === "post" && items.length > 0 && (
             // Même carrousel que les publications, dans l'ordre choisi ; « × » en haut à gauche de chaque élément
             <MediaCarousel
               items={items.map((item) =>
@@ -741,6 +937,7 @@ export default function Publier() {
               }}
             />
           )}
+          {postType === "post" && (
           <p className="mb-3 text-right text-xs font-semibold tabular-nums text-muted">
             {t("publish.mediaCount")
               .replace("{n}", String(items.length))
@@ -748,6 +945,7 @@ export default function Publier() {
               .replace("{v}", String(videoCount))
               .replace("{vmax}", String(MAX_POST_VIDEOS))}
           </p>
+          )}
 
           {/* Progression de l'envoi : « Envoi 3/8… » */}
           {uploadProgress && (
@@ -791,7 +989,7 @@ export default function Publier() {
             ref={videoInputRef}
             type="file"
             accept={VIDEO_ACCEPT}
-            multiple
+            multiple={postType === "post"}
             tabIndex={-1}
             aria-hidden="true"
             onChange={(e) => {
@@ -801,6 +999,7 @@ export default function Publier() {
             className="hidden"
           />
           {/* Les deux boutons ajoutent à la même liste ; désactivés à 15 éléments (et à 5 vidéos pour le second) */}
+          {postType === "post" && (
           <div className="flex gap-2">
             <button type="button" onClick={() => photoInputRef.current?.click()} disabled={publishing || mediaFull} className={pickerButton}>
               <svg {...iconProps} className="h-5 w-5 shrink-0" strokeWidth={2}>
@@ -818,6 +1017,7 @@ export default function Publier() {
               {videoPreparing > 0 ? t("publish.videoPreparing") : t("publish.addVideo")}
             </button>
           </div>
+          )}
           <p aria-live="polite" className="mt-1.5 text-xs text-danger">
             {mediaError}
           </p>
@@ -922,6 +1122,7 @@ export default function Publier() {
             }
             initial={item.framing ?? null}
             initialTexts={item.texts ?? []}
+            frameRatio={postType === "video" ? VERTICAL_FRAME_RATIO : FRAME_RATIO}
             busy={editBusy}
             onCancel={() => !editBusy && setEditingId(null)}
             onDone={(framing, texts) => void finishEditing(framing, texts)}

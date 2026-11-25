@@ -7,6 +7,8 @@ import ConfirmDialog from "../../../components/ConfirmDialog";
 import FollowButton from "../../../components/FollowButton";
 import ProfileBanner from "../../../components/ProfileBanner";
 import ProfileStats from "../../../components/ProfileStats";
+import ProfilePublications from "../../../components/profile/ProfilePublications";
+import { fetchPostCount } from "../../../lib/posts";
 import ReportDialog, { type ReportReason } from "../../../components/ReportDialog";
 import ShareButton from "../../../components/ShareButton";
 import SportsTabs from "../../../components/SportsTabs";
@@ -59,6 +61,7 @@ function ProfilPublic() {
   const [sports, setSports] = useState<UserSport[]>([]);
   const [activeSport, setActiveSport] = useState<number | null>(null);
   const [counts, setCounts] = useState({ followers: 0, following: 0 });
+  const [postCount, setPostCount] = useState<number | null>(null);
   const [followStatus, setFollowStatus] = useState<FollowStatus>(null);
   const [blocked, setBlocked] = useState(false);
   const [canView, setCanView] = useState(false);
@@ -73,10 +76,12 @@ function ProfilPublic() {
   // Abonnés / abonnements et droit de voir le contenu : relus après chaque action
   const refreshCounts = useCallback(async (ownerId: string) => {
     const supabase = createClient();
-    const [countsResult, viewResult] = await Promise.all([
+    const [countsResult, viewResult, posts] = await Promise.all([
       supabase.rpc("get_follow_counts", { uid: ownerId }),
       supabase.rpc("can_view_content", { owner: ownerId }),
+      fetchPostCount(supabase, ownerId),
     ]);
+    setPostCount(posts);
     if (countsResult.error) {
       console.error(`Lecture des abonnés impossible : ${countsResult.error.message} (code ${countsResult.error.code})`);
     } else {
@@ -289,7 +294,7 @@ function ProfilPublic() {
           {profile.bio && <p className="mt-4 whitespace-pre-line break-words text-sm leading-snug">{profile.bio}</p>}
 
           <div className="mt-5">
-            <ProfileStats followers={counts.followers} following={counts.following} />
+            <ProfileStats posts={canView && postCount !== null ? postCount : undefined} followers={counts.followers} following={counts.following} />
           </div>
 
           {/* Masquée s'il n'y a aucun sport */}
@@ -365,7 +370,9 @@ function ProfilPublic() {
                 </button>
               </div>
             ) : canView ? (
-              <p className="rounded-2xl border border-line bg-surface p-6 text-center text-sm text-muted">{t("publicProfile.postsSoon")}</p>
+              <div className="-mx-6">
+                <ProfilePublications authorId={profile.id} username={profile.username} mine={profile.id === me} />
+              </div>
             ) : (
               <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-surface p-6 text-center">
                 <svg aria-hidden="true" viewBox="0 0 24 24" className="h-10 w-10 text-accent-ink" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { createPortal } from "react-dom";
 import TextOverlayLayer from "../TextOverlayLayer";
 import { useT, type MessageKey } from "../../lib/i18n";
-import { DEFAULT_FRAMING, MAX_SCALE, MIN_SCALE, clampFraming, framedMediaStyle, type Framing } from "../../lib/framing";
+import { DEFAULT_FRAMING, FRAME_RATIO, MAX_SCALE, MIN_SCALE, clampFraming, framedMediaStyle, type Framing } from "../../lib/framing";
 import { TEXT_FONTS } from "../../lib/textFonts";
 import {
   MAX_TEXT_BLOCKS,
@@ -53,6 +53,7 @@ export default function MediaEditor({
   media,
   initial,
   initialTexts = [],
+  frameRatio = FRAME_RATIO,
   busy = false,
   onCancel,
   onDone,
@@ -60,6 +61,7 @@ export default function MediaEditor({
   media: EditorMedia;
   initial: Framing | null;
   initialTexts?: TextBlock[];
+  frameRatio?: number; // cadre largeur / hauteur : 4:5 (posts) ou 9:16 (vidéos verticales)
   busy?: boolean;
   onCancel: () => void;
   onDone: (framing: Framing, texts: TextBlock[]) => void;
@@ -70,7 +72,9 @@ export default function MediaEditor({
   const doneRef = useRef<HTMLButtonElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [aspect, setAspect] = useState<number | null>(media.aspect);
-  const [framing, setFraming] = useState<Framing>(initial ?? DEFAULT_FRAMING);
+  // Cadrage par défaut dans le cadre demandé (le format est enregistré avec le cadrage)
+  const startFraming: Framing = frameRatio === FRAME_RATIO ? DEFAULT_FRAMING : { ...DEFAULT_FRAMING, frame: frameRatio };
+  const [framing, setFraming] = useState<Framing>(initial ? { ...initial, ...(frameRatio === FRAME_RATIO ? {} : { frame: frameRatio }) } : startFraming);
   const [interacting, setInteracting] = useState(false);
   const [texts, setTexts] = useState<TextBlock[]>(initialTexts);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -406,7 +410,8 @@ export default function MediaEditor({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerEnd}
           onPointerCancel={onPointerEnd}
-          className="relative aspect-[4/5] w-[min(100%,calc((100dvh-17rem)*0.8),480px)] cursor-grab touch-none select-none overflow-hidden bg-black active:cursor-grabbing"
+          style={{ aspectRatio: frameRatio, width: `min(100%, calc((100dvh - 17rem) * ${frameRatio}), 480px)` }}
+          className="relative cursor-grab touch-none select-none overflow-hidden bg-black active:cursor-grabbing"
         >
           {framing.mode === "fit" && framing.background === "blur" && blurSource && (
             // eslint-disable-next-line @next/next/no-img-element -- fond flou temporaire (aperçu local)
@@ -700,7 +705,7 @@ export default function MediaEditor({
               </button>
               <button
                 type="button"
-                onClick={() => setFraming(DEFAULT_FRAMING)}
+                onClick={() => setFraming(startFraming)}
                 disabled={busy}
                 className="min-h-11 flex-1 rounded-full border-2 border-white/30 text-sm font-bold hover:border-white disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-white"
               >

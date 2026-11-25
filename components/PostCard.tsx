@@ -8,7 +8,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Avatar from "./Avatar";
 import ConfirmDialog from "./ConfirmDialog";
+import FramedBackground from "./FramedBackground";
 import MediaCarousel from "./MediaCarousel";
+import TextOverlayLayer from "./TextOverlayLayer";
+import { VERTICAL_FRAME_RATIO, framedMediaStyle } from "../lib/framing";
+import { fromOverlays, textAlt } from "../lib/overlayData";
 import MusicCredit from "./music/MusicCredit";
 import SoundButton from "./music/SoundButton";
 import { PostSoundContext } from "./PostSoundContext";
@@ -19,7 +23,7 @@ import { formatEventDate, type EventRow } from "../lib/events";
 import type { Person } from "../lib/follows";
 import { useLanguage, useT } from "../lib/i18n";
 import { musicSource, postSound, useMusicTrack } from "../lib/music";
-import { deletePost, postMedia, setLike, type PostRow, type PostStats } from "../lib/posts";
+import { deletePost, postMedia, setLike, type MediaItem, type PostRow, type PostStats } from "../lib/posts";
 import { initialsOf } from "../lib/profile";
 import { absoluteUrl, postSharePath } from "../lib/share";
 import { sportImage } from "../lib/sportImages";
@@ -219,7 +223,10 @@ export default function PostCard({
           <ExpandableText text={post.body} className="mt-3 text-sm leading-snug" />
         ))}
 
-      {media.length > 0 && (
+      {post.kind === "video" && media.some((m) => m.type === "video") ? (
+        // Vidéo (kind = 'video') : format vertical avec un badge « Vidéo » ; un clic l'ouvre dans le fil plein écran
+        <VerticalVideoCard post={post} item={media.find((m) => m.type === "video")!} label={t("post.openVideo")} badge={t("post.videoBadge")} />
+      ) : media.length > 0 && (
         // Un élément à la fois, on glisse pour les suivants ; un toucher simple sur une photo l'ouvre en grand
         <div
           ref={(element) => {
@@ -437,6 +444,46 @@ function PhotoViewer({ images, index, onChange }: { images: string[]; index: num
       )}
     </dialog>,
     document.body
+  );
+}
+
+// ---------- Vidéo verticale (kind = 'video') ----------
+
+// Miniature verticale 9:16 (recadrée comme la vidéo, textes compris), badge « Vidéo », ▶ ; ouvre /videos sur cette vidéo
+function VerticalVideoCard({ post, item, label, badge }: { post: PostRow; item: MediaItem; label: string; badge: string }) {
+  const framing = item.framing ? { ...item.framing, frame: item.framing.frame ?? VERTICAL_FRAME_RATIO } : null;
+  const written = textAlt(item.overlays);
+  return (
+    <Link
+      href={`/videos?start=${encodeURIComponent(post.id)}`}
+      aria-label={written ? `${label} : ${written}` : label}
+      className="relative mx-auto mt-3 block w-[min(100%,calc(70dvh*0.5625))] overflow-hidden rounded-xl bg-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink"
+      style={{ aspectRatio: VERTICAL_FRAME_RATIO }}
+    >
+      {framing && <FramedBackground framing={framing} poster={item.poster ?? null} />}
+      {item.poster && (
+        // eslint-disable-next-line @next/next/no-img-element -- miniature recadrée comme la vidéo (translate + scale)
+        <img
+          src={item.poster}
+          alt=""
+          draggable={false}
+          style={
+            framing?.aspect
+              ? framedMediaStyle(framing, framing.aspect)
+              : { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }
+          }
+        />
+      )}
+      {item.overlays && <TextOverlayLayer blocks={fromOverlays(item.overlays)} />}
+      <span className="absolute left-2 top-2 z-10 rounded-full bg-[#39ff14] px-2.5 py-1 text-[11px] font-black uppercase tracking-wide text-black">{badge}</span>
+      <span aria-hidden="true" className="absolute inset-0 z-10 flex items-center justify-center">
+        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-black/55 text-white">
+          <svg viewBox="0 0 24 24" className="ml-1 h-8 w-8" fill="currentColor">
+            <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" />
+          </svg>
+        </span>
+      </span>
+    </Link>
   );
 }
 

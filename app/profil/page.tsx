@@ -8,6 +8,8 @@ import Avatar from "../../components/Avatar";
 import ProfileBanner from "../../components/ProfileBanner";
 import ProfileStats from "../../components/ProfileStats";
 import ProfileTabs from "../../components/ProfileTabs";
+import ProfilePublications from "../../components/profile/ProfilePublications";
+import { fetchPostCount } from "../../lib/posts";
 import { useShare } from "../../components/ShareButton";
 import SportsTabs from "../../components/SportsTabs";
 import { displayCityLabel } from "../../lib/cities";
@@ -34,6 +36,8 @@ export default function Profil() {
   const [age, setAge] = useState<number | null>(null);
   const [city, setCity] = useState<string | null>(null);
   const [counts, setCounts] = useState({ followers: 0, following: 0 });
+  const [myId, setMyId] = useState("");
+  const [postCount, setPostCount] = useState(0);
   const [sports, setSports] = useState<UserSport[]>([]);
   const [activeSport, setActiveSport] = useState<number | null>(null);
   // Partage du profil (feuille de partage du téléphone ou « Envoyer à… »)
@@ -47,6 +51,8 @@ export default function Profil() {
         return;
       }
       const uid = data.user.id;
+      setMyId(uid);
+      void fetchPostCount(supabase, uid).then(setPostCount);
       const { data: row, error } = await supabase
         .from("profiles")
         .select("username, display_name, bio, avatar_url")
@@ -195,9 +201,9 @@ export default function Profil() {
 
         {profile.bio && <p className="mt-4 whitespace-pre-line break-words text-sm leading-snug">{profile.bio}</p>}
 
-        {/* Pas encore de publications : 0 en attendant */}
+        {/* Publications : posts + vidéos */}
         <div className="mt-5">
-          <ProfileStats posts={0} followers={counts.followers} following={counts.following} />
+          <ProfileStats posts={postCount} followers={counts.followers} following={counts.following} />
         </div>
 
         {sports.length > 0 && (
@@ -208,7 +214,7 @@ export default function Profil() {
       </div>
 
       <div className="mt-6">
-        <ProfileTabs />
+        <ProfileTabs publications={myId ? <ProfilePublications authorId={myId} username={profile.username || null} mine /> : undefined} />
       </div>
       {shareUi}
     </AppShell>
