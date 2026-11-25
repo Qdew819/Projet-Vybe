@@ -8,11 +8,16 @@ import { RETURN_COOKIE, RETURN_PARAM, safeReturnPath } from "../lib/share";
 // Mettre false pour cacher le bouton Apple tant qu'on n'a pas le compte développeur Apple
 const showApple = true;
 
-export default function SocialButtons() {
+// blockedMessage : si présent, le bouton Google n'ouvre rien et affiche ce message (case à cocher pas cochée)
+export default function SocialButtons({ blockedMessage }: { blockedMessage?: string } = {}) {
   const t = useT();
   const [message, setMessage] = useState("");
 
   async function signInWithGoogle() {
+    if (blockedMessage) {
+      setMessage(blockedMessage);
+      return;
+    }
     setMessage("");
     // Arrivée depuis un lien partagé (?retour=/e/…) : le chemin est gardé 10 minutes dans un cookie, relu par
     // /auth/callback. (L'adresse de retour de Google reste la même : elle doit correspondre à la liste de Supabase.)

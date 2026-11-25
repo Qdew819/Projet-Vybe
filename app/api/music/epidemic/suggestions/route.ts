@@ -19,8 +19,8 @@ import { postMoodKeywords } from "../../../../../lib/musicKeywords";
 //   3. DELETE /v0/uploads/images/{imageId} → l'image est supprimée tout de suite chez Epidemic Sound
 //   4. GET /v0/tracks/search?term=<mots-clés sport + texte> pour compléter (ou sort=Popularity si rien)
 // L'image n'est JAMAIS stockée chez nous : elle sert seulement à l'appel, et seule son empreinte sert de clé de cache.
-// TODO(confidentialité) : mentionner dans la future politique de confidentialité que, pour suggérer une musique, une
-// image réduite du premier média de la publication est envoyée à Epidemic Sound (puis supprimée de leur côté).
+// Confidentialité : mentionné dans la politique (content/politique-confidentialite.md, section 5, Epidemic Sound) : une
+// image réduite du premier média est envoyée à Epidemic Sound pour suggérer une musique, puis supprimée de leur côté.
 
 const WANTED = 10;
 const MIN_WANTED = 6;

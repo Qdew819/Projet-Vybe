@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // Chacun ne lit et n'écrit que sa propre ligne ; get_age() la lit pour les événements (âge minimum).
 // Elle n'est jamais enregistrée dans public.profiles (table lisible par les autres).
 
-export const MIN_AGE = 16; // âge minimum pour utiliser Vybe
+export const MIN_AGE = 14; // âge minimum pour utiliser Vybe (politique de confidentialité, section 2)
 export const ADULT_AGE = 18; // en dessous, le compte passe en privé
 
 // Date du jour au format AAAA-MM-JJ (heure locale)

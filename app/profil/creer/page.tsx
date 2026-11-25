@@ -38,6 +38,13 @@ export default function CreerProfil() {
           return;
         }
         setMetaName(displayNameFromMetadata(data.user.user_metadata ?? {}));
+        // Date déjà donnée à l'inscription (même appareil) : pré-remplie
+        try {
+          const fromSignup = window.sessionStorage.getItem("vybe.signupBirthDate");
+          if (fromSignup) setBirthDate((current) => current || fromSignup);
+        } catch {
+          // Stockage indisponible
+        }
         setReady(true);
       });
   }, [router]);

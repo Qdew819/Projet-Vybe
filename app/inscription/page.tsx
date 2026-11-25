@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import BirthDateField from "../../components/BirthDateField";
 import LanguageToggle from "../../components/LanguageToggle";
 import SocialButtons from "../../components/SocialButtons";
+import { MIN_AGE, ageFrom } from "../../lib/birthDate";
 import { useT } from "../../lib/i18n";
+import { useMounted } from "../../lib/useMounted";
 import { createClient } from "../../lib/supabase/client";
 
 type Status = { type: "error" | "info"; text: string } | null;
@@ -17,19 +20,39 @@ export default function Inscription() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  // Le champ de date lit l'année en cours : affiché seulement dans le navigateur (pas pendant le pré-rendu)
+  const mounted = useMounted();
   const [status, setStatus] = useState<Status>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setLoading(true);
     setStatus(null);
+
+    // Au moins 14 ans selon la date de naissance, et politique de confidentialité acceptée (case distincte)
+    const age = ageFrom(birthDate);
+    if (age === null) {
+      setStatus({ type: "error", text: t("profile.errorBirthDate") });
+      return;
+    }
+    if (age < MIN_AGE) {
+      setStatus({ type: "error", text: t("profile.errorTooYoung") });
+      return;
+    }
+    if (!privacyAccepted) {
+      setStatus({ type: "error", text: t("signup.privacyRequired") });
+      return;
+    }
+    setLoading(true);
 
     const supabase = createClient();
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { first_name: name, last_name: lastName } }
+      // Preuve du consentement (date et version de la politique acceptée), dans les données du compte
+      options: { data: { first_name: name, last_name: lastName, privacy_accepted_at: new Date().toISOString(), privacy_version: "2026-11-25" } }
     });
 
     setLoading(false);
@@ -40,6 +63,13 @@ export default function Inscription() {
         : t("signup.errorGeneric");
       setStatus({ type: "error", text });
       return;
+    }
+
+    // Date de naissance reprise à la création du profil (même appareil), où elle est enregistrée en privé
+    try {
+      window.sessionStorage.setItem("vybe.signupBirthDate", birthDate);
+    } catch {
+      // Stockage indisponible : elle sera simplement redemandée
     }
 
     // Si Supabase ne demande pas de confirmation, la personne est déjà connectée
@@ -71,7 +101,7 @@ export default function Inscription() {
         <p className="mt-2 text-sm text-muted">{t("signup.subtitle")}</p>
 
         <div className="mt-8">
-          <SocialButtons />
+          <SocialButtons blockedMessage={privacyAccepted ? undefined : t("signup.privacyFirst")} />
         </div>
 
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
@@ -140,9 +170,42 @@ export default function Inscription() {
             />
           </div>
 
+          <div>
+            <span id="naissance-label" className="mb-1.5 block text-sm font-semibold">
+              {t("profile.birthDate")}
+            </span>
+            {mounted ? (
+              <BirthDateField id="naissance" value={birthDate} onChange={setBirthDate} describedBy="naissance-aide" />
+            ) : (
+              <div aria-hidden="true" className="h-12 animate-pulse rounded-xl bg-surface" />
+            )}
+            <p id="naissance-aide" className="mt-1.5 text-xs text-muted">
+              {t("signup.birthDateHint")}
+            </p>
+          </div>
+
           <label className="flex items-start gap-3 text-sm text-muted">
             <input type="checkbox" required className="mt-0.5 h-5 w-5 shrink-0 accent-accent-ink" />
             <span>{t("signup.terms")}</span>
+          </label>
+
+          {/* Consentement distinct et obligatoire (Loi 25) */}
+          <label className="flex items-start gap-3 text-sm text-muted">
+            <input
+              type="checkbox"
+              required
+              checked={privacyAccepted}
+              onChange={(e) => setPrivacyAccepted(e.target.checked)}
+              className="mt-0.5 h-5 w-5 shrink-0 accent-accent-ink"
+            />
+            <span>
+              {t("signup.privacyBefore")}
+              <a href="/confidentialite" target="_blank" rel="noopener noreferrer" className="font-bold text-accent-ink underline">
+                {t("signup.privacyLink")}
+                <span className="sr-only"> {t("signup.privacyNewTab")}</span>
+              </a>
+              .
+            </span>
           </label>
 
           <button
@@ -167,6 +230,11 @@ export default function Inscription() {
           {t("signup.hasAccount")}{" "}
           <Link href="/connexion" className="font-bold text-accent-ink">
             {t("signup.login")}
+          </Link>
+        </p>
+        <p className="mt-4 text-center text-xs">
+          <Link href="/confidentialite" className="text-muted underline-offset-2 hover:underline">
+            {t("footer.privacy")}
           </Link>
         </p>
       </div>

@@ -518,6 +518,23 @@ export default function Parametres() {
                 <LightingToggle />
               </div>
             </section>
+
+            <section aria-labelledby="titre-legal" className="mt-10">
+              <h2 id="titre-legal" className="mb-4 text-sm font-bold uppercase tracking-wide text-muted">
+                {t("settings.legal")}
+              </h2>
+              <SettingsLink
+                href="/confidentialite"
+                title={t("settings.privacyPolicy")}
+                hint={t("settings.privacyPolicyHint")}
+                icon={
+                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z" />
+                    <path d="M9 12l2 2 4-4" />
+                  </svg>
+                }
+              />
+            </section>
           </div>
         )}
 

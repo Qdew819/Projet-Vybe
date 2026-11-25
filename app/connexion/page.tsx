@@ -116,6 +116,11 @@ export default function Connexion() {
             {t("login.createOne")}
           </Link>
         </p>
+        <p className="mt-4 text-center text-xs">
+          <Link href="/confidentialite" className="text-muted underline-offset-2 hover:underline">
+            {t("footer.privacy")}
+          </Link>
+        </p>
       </div>
     </main>
   );
