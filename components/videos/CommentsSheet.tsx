@@ -246,7 +246,7 @@ export default function CommentsSheet({
                           {relativeTime(comment.created_at, language, new Date(loadedAt))}
                         </time>
                       </p>
-                      <ExpandableText text={comment.body} backdrop="background" className="mt-0.5 text-sm" />
+                      <ExpandableText text={comment.body} lines={3} backdrop="background" className="mt-0.5 text-sm" />
                     </div>
                     {canDelete && (
                       <button

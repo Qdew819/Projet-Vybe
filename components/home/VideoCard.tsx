@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import ExpandableText from "../ExpandableText";
 import { useT } from "../../lib/i18n";
 import { DurationBadge, PlayIcon } from "./MediaThumb";
 
@@ -46,9 +47,10 @@ export default function VideoCard({
         <DurationBadge duration={duration} />
       </span>
       {/* Début de la légende : 2 lignes au plus (hauteur fixe, pour que toutes les cartes aient la même taille) */}
-      <span aria-hidden="true" className="mt-1.5 line-clamp-2 block h-[2.5em] break-words text-xs font-semibold leading-tight text-foreground">
-        {preview}
-      </span>
+      {/* « dernier mot… plus » comme dans le fil ; la carte est déjà un lien : pas de dépliage ici */}
+      <div aria-hidden="true" className="mt-1.5 h-[2.5em] overflow-hidden text-xs font-semibold leading-tight text-foreground">
+        <ExpandableText text={preview} lines={2} interactive={false} />
+      </div>
       <span aria-hidden="true" className="mt-0.5 block truncate whitespace-nowrap text-[11px] text-muted">
         {author}
       </span>
