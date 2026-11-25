@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Avatar from "../../components/Avatar";
 import MediaCarousel from "../../components/MediaCarousel";
+import MediaEditor from "../../components/publish/MediaEditor";
+import type { Framing } from "../../lib/framing";
 import SoundSection, { DEFAULT_SOUND, type SoundChoice } from "../../components/music/SoundSection";
 import { EVENT_COLUMNS, fetchMyStatuses, formatEventDate, type EventRow } from "../../lib/events";
 import { loadPeople, type Person } from "../../lib/follows";
@@ -17,6 +19,7 @@ import {
   compressPostImage,
   isAcceptedPostImage,
   postErrorKey,
+  renderFramedPhoto,
   type MediaItem,
 } from "../../lib/posts";
 import { initialsOf } from "../../lib/profile";
@@ -37,9 +40,31 @@ import {
 } from "../../lib/videos";
 
 // Éléments choisis, dans l'ordre (photos déjà compressées, vidéos avec leur affiche capturée)
+// Photo : original (fichier choisi, gardé jusqu'à l'envoi pour re-modifier sans perte), base (compressée, pleine
+// image) et blob / preview (ce qui est envoyé et affiché : la base, ou la photo recadrée 4:5 après « Modifier »).
+// Vidéo : jamais réencodée ; son cadrage (framing) est enregistré dans posts.media.
 type Draft =
-  | { id: string; kind: "image"; blob: Blob; preview: string }
-  | { id: string; kind: "video"; file: File; preview: string; duration: number; poster: Blob | null; posterPreview: string | null };
+  | {
+      id: string;
+      kind: "image";
+      original: Blob;
+      base: Blob;
+      basePreview: string;
+      blob: Blob;
+      preview: string;
+      framing?: Framing;
+    }
+  | {
+      id: string;
+      kind: "video";
+      file: File;
+      preview: string;
+      duration: number;
+      aspect: number | null;
+      poster: Blob | null;
+      posterPreview: string | null;
+      framing?: Framing;
+    };
 
 // Boutons « Ajouter une photo » / « Ajouter une vidéo » (désactivés : estompés, sans survol)
 const pickerButton =
@@ -47,6 +72,7 @@ const pickerButton =
 
 function revokeDraft(draft: Draft) {
   URL.revokeObjectURL(draft.preview);
+  if (draft.kind === "image" && draft.basePreview !== draft.preview) URL.revokeObjectURL(draft.basePreview);
   if (draft.kind === "video" && draft.posterPreview) URL.revokeObjectURL(draft.posterPreview);
 }
 
@@ -80,6 +106,8 @@ export default function Publier() {
   const [mediaError, setMediaError] = useState("");
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [soundChoice, setSoundChoice] = useState<SoundChoice>(DEFAULT_SOUND);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [sport, setSport] = useState<string | null>(null);
@@ -187,7 +215,10 @@ export default function Publier() {
       setPreparing((n) => n + 1);
       try {
         const blob = await compressPostImage(file);
-        if (hasRoom("image")) append({ id: crypto.randomUUID(), kind: "image", blob, preview: URL.createObjectURL(blob) });
+        if (hasRoom("image")) {
+          const url = URL.createObjectURL(blob);
+          append({ id: crypto.randomUUID(), kind: "image", original: file, base: blob, basePreview: url, blob, preview: url });
+        }
       } catch (err) {
         console.error("Préparation de la photo impossible :", err);
         setMediaError(t("publish.photoProcess"));
@@ -233,6 +264,7 @@ export default function Publier() {
             file,
             preview: URL.createObjectURL(file),
             duration: info.duration,
+            aspect: info.width && info.height ? info.width / info.height : null,
             poster: info.poster,
             posterPreview: info.poster ? URL.createObjectURL(info.poster) : null,
           });
@@ -243,6 +275,44 @@ export default function Publier() {
       }
       setVideoPreparing((n) => n - 1);
     }
+  }
+
+  // ---------- Éditeur de cadrage (« Modifier ») ----------
+
+  function updateItem(id: string, patch: (draft: Draft) => Draft) {
+    itemsRef.current = itemsRef.current.map((item) => (item.id === id ? patch(item) : item));
+    setItems(itemsRef.current);
+  }
+
+  async function finishEditing(framing: Framing) {
+    const item = itemsRef.current.find((d) => d.id === editingId);
+    if (!item) {
+      setEditingId(null);
+      return;
+    }
+    if (item.kind === "video") {
+      // Vidéo : seulement le cadrage (pas de réencodage)
+      updateItem(item.id, (d) => ({ ...d, framing }));
+      setEditingId(null);
+      return;
+    }
+    // Photo : image 4:5 générée depuis l'original (ou la base si l'original ne se décode pas, ex. HEIC)
+    setEditBusy(true);
+    try {
+      const blob = await renderFramedPhoto(item.original, framing).catch(() => renderFramedPhoto(item.base, framing));
+      const preview = URL.createObjectURL(blob);
+      updateItem(item.id, (d) => {
+        if (d.kind !== "image") return d;
+        if (d.preview !== d.basePreview) URL.revokeObjectURL(d.preview);
+        return { ...d, blob, preview, framing };
+      });
+      setEditingId(null);
+    } catch (err) {
+      console.error("Recadrage de la photo impossible :", err);
+      setMediaError(t("editor.error"));
+      setEditingId(null);
+    }
+    setEditBusy(false);
   }
 
   function removeItem(draft: Draft) {
@@ -275,7 +345,7 @@ export default function Publier() {
           items.map((item) =>
             item.kind === "image"
               ? { kind: "image" as const, blob: item.blob }
-              : { kind: "video" as const, file: item.file, duration: item.duration, poster: item.poster }
+              : { kind: "video" as const, file: item.file, duration: item.duration, poster: item.poster, framing: item.framing ?? null }
           ),
           (done) => setUploadProgress({ done, total })
         );
@@ -394,7 +464,13 @@ export default function Publier() {
               items={items.map((item) =>
                 item.kind === "image"
                   ? { type: "image", url: item.preview }
-                  : { type: "video", url: item.preview, poster: item.posterPreview, duration_s: item.duration }
+                  : {
+                      type: "video",
+                      url: item.preview,
+                      poster: item.posterPreview,
+                      duration_s: item.duration,
+                      framing: item.framing ? { ...item.framing, aspect: item.framing.aspect ?? item.aspect ?? undefined } : null,
+                    }
               )}
               preview
               zoomable={false}
@@ -403,6 +479,21 @@ export default function Publier() {
                 const item = items[index];
                 if (!item) return null;
                 return (
+                  <>
+                  {/* « Modifier » : recadrer dans le cadre 4:5 (éditeur plein écran) */}
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(item.id)}
+                    disabled={publishing}
+                    aria-label={t("editor.editItem").replace("{n}", String(index + 1))}
+                    className="absolute left-14 top-2 z-10 flex h-11 items-center gap-1.5 rounded-full bg-black/60 px-3 text-sm font-bold text-white disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-white"
+                  >
+                    <svg {...iconProps} className="h-4 w-4" strokeWidth={2.2}>
+                      <path d="M4 20h4L19 9l-4-4L4 16v4z" />
+                      <path d="M13.5 6.5l4 4" />
+                    </svg>
+                    {t("editor.edit")}
+                  </button>
                   <button
                     type="button"
                     onClick={() => removeItem(item)}
@@ -414,6 +505,7 @@ export default function Publier() {
                       <path d="M6 6l12 12M18 6L6 18" />
                     </svg>
                   </button>
+                  </>
                 );
               }}
             />
@@ -568,6 +660,25 @@ export default function Publier() {
           {error}
         </p>
       </div>
+
+      {(() => {
+        const item = editingId ? items.find((d) => d.id === editingId) : undefined;
+        if (!item) return null;
+        return (
+          <MediaEditor
+            key={item.id}
+            media={
+              item.kind === "image"
+                ? { kind: "image", src: item.basePreview, aspect: null }
+                : { kind: "video", src: item.preview, poster: item.posterPreview, aspect: item.aspect }
+            }
+            initial={item.framing ?? null}
+            busy={editBusy}
+            onCancel={() => !editBusy && setEditingId(null)}
+            onDone={(framing) => void finishEditing(framing)}
+          />
+        );
+      })()}
     </main>
   );
 }

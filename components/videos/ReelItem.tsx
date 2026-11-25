@@ -6,11 +6,13 @@ import Link from "next/link";
 import Avatar from "../Avatar";
 import ConfirmDialog from "../ConfirmDialog";
 import ExpandableText from "../ExpandableText";
+import FramedBackground from "../FramedBackground";
 import MusicCredit from "../music/MusicCredit";
 import { PostMenu } from "../PostCard";
 import ReportDialog, { type ReportReason } from "../ReportDialog";
 import ShareButton from "../ShareButton";
 import { formatEventDate } from "../../lib/events";
+import { framedMediaStyle, type Framing } from "../../lib/framing";
 import { followUser, type FollowStatus } from "../../lib/follows";
 import { useLanguage, useT } from "../../lib/i18n";
 import { deletePost, postMedia, setLike, type MediaItem, type PostRow, type PostStats } from "../../lib/posts";
@@ -90,6 +92,7 @@ export default function ReelItem({
 }) {
   const { post } = reel;
   const poster = post.video_poster_url ?? null;
+  const firstFraming = postMedia(post).find((m) => m.type === "video")?.framing ?? null;
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
       {/* Affiche floutée en fond : visible pendant le chargement et sur les bords d'une vidéo horizontale */}
@@ -113,7 +116,15 @@ export default function ReelItem({
           onMessage={onMessage}
         />
       ) : (
-        poster && <Image src={poster} alt="" fill unoptimized sizes="480px" className="object-contain" />
+        poster &&
+        (firstFraming?.aspect ? (
+          <FramedBox framing={firstFraming}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- affiche recadrée comme la vidéo */}
+            <img src={poster} alt="" draggable={false} style={framedMediaStyle(firstFraming, firstFraming.aspect)} />
+          </FramedBox>
+        ) : (
+          <Image src={poster} alt="" fill unoptimized sizes="480px" className="object-contain" />
+        ))
       )}
     </div>
   );
@@ -389,30 +400,62 @@ function LiveReel({
       >
         {videos.map((item, index) => {
           const fit = fits[index] ?? "cover";
+          const framed = item.framing?.aspect ? item.framing : null;
+          const framedStyle = framed ? framedMediaStyle(framed, framed.aspect ?? 1) : undefined;
           return (
             <div key={`${index}-${item.url}`} className="relative h-full w-full shrink-0 snap-center snap-always">
-              <video
-                ref={(element) => {
-                  videoRefs.current[index] = element;
-                }}
-                src={item.url}
-                poster={item.poster ?? undefined}
-                preload={index === current ? preload : active && Math.abs(index - current) === 1 ? "metadata" : "none"}
-                crossOrigin="anonymous"
-                playsInline
-                muted
-                loop
-                onLoadedMetadata={(e) => {
-                  const video = e.currentTarget;
-                  if (video.videoWidth && video.videoHeight) {
-                    const next = video.videoWidth / video.videoHeight <= VERTICAL_RATIO ? "cover" : "contain";
-                    setFits((currentFits) => (currentFits[index] === next ? currentFits : { ...currentFits, [index]: next }));
-                  }
-                }}
-                onTimeUpdate={() => onTimeUpdate(index)}
-                onError={() => setFailedAt((list) => (list.includes(index) ? list : [...list, index]))}
-                className={`absolute inset-0 h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`}
-              />
+              {framed ? (
+                // Cadrage choisi dans l'éditeur de /publier (sans réencodage) : cadre 4:5 centré
+                <FramedBox framing={framed}>
+                  <video
+                    ref={(element) => {
+                      videoRefs.current[index] = element;
+                    }}
+                    src={item.url}
+                    poster={item.poster ?? undefined}
+                    preload={index === current ? preload : active && Math.abs(index - current) === 1 ? "metadata" : "none"}
+                    crossOrigin="anonymous"
+                    playsInline
+                    muted
+                    loop
+                    onLoadedMetadata={(e) => {
+                      const video = e.currentTarget;
+                      if (video.videoWidth && video.videoHeight) {
+                        const next = video.videoWidth / video.videoHeight <= VERTICAL_RATIO ? "cover" : "contain";
+                        setFits((currentFits) => (currentFits[index] === next ? currentFits : { ...currentFits, [index]: next }));
+                      }
+                    }}
+                    onTimeUpdate={() => onTimeUpdate(index)}
+                    onError={() => setFailedAt((list) => (list.includes(index) ? list : [...list, index]))}
+                    style={framedStyle}
+                    className={framed ? "" : `absolute inset-0 h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`}
+                  />
+                </FramedBox>
+              ) : (
+                <video
+                  ref={(element) => {
+                    videoRefs.current[index] = element;
+                  }}
+                  src={item.url}
+                  poster={item.poster ?? undefined}
+                  preload={index === current ? preload : active && Math.abs(index - current) === 1 ? "metadata" : "none"}
+                  crossOrigin="anonymous"
+                  playsInline
+                  muted
+                  loop
+                  onLoadedMetadata={(e) => {
+                    const video = e.currentTarget;
+                    if (video.videoWidth && video.videoHeight) {
+                      const next = video.videoWidth / video.videoHeight <= VERTICAL_RATIO ? "cover" : "contain";
+                      setFits((currentFits) => (currentFits[index] === next ? currentFits : { ...currentFits, [index]: next }));
+                    }
+                  }}
+                  onTimeUpdate={() => onTimeUpdate(index)}
+                  onError={() => setFailedAt((list) => (list.includes(index) ? list : [...list, index]))}
+                  style={framedStyle}
+                  className={framed ? "" : `absolute inset-0 h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`}
+                />
+              )}
               {/* Zone de toucher (sous l'interface) */}
               {!failedAt.includes(index) && (
                 <button
@@ -699,6 +742,18 @@ function LiveReel({
         />
       )}
     </>
+  );
+}
+
+// Cadre 4:5 centré dans l'écran du fil (vidéo ou affiche recadrée), fond noir ou flou selon le cadrage
+function FramedBox({ framing, children }: { framing: Framing; children: ReactNode }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+      <div className="relative aspect-[4/5] w-[min(100%,calc(100dvh*0.8))] overflow-hidden bg-black">
+        <FramedBackground framing={framing} poster={null} />
+        {children}
+      </div>
+    </div>
   );
 }
 

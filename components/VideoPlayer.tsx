@@ -2,7 +2,9 @@
 
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { PlayIcon } from "./home/MediaThumb";
+import FramedBackground from "./FramedBackground";
 import { PostSoundContext } from "./PostSoundContext";
+import { framedMediaStyle, type Framing } from "../lib/framing";
 import { useT } from "../lib/i18n";
 import { createClient } from "../lib/supabase/client";
 import { claimSound, setVideoSound, toggleSound, useSoundOn } from "../lib/sound";
@@ -45,6 +47,7 @@ export default function VideoPlayer({
   duration,
   views,
   frame = false,
+  framing = null,
 }: {
   postId: string;
   src: string;
@@ -52,6 +55,7 @@ export default function VideoPlayer({
   duration: number | null;
   views?: string; // « 128 vues », déjà formaté
   frame?: boolean;
+  framing?: Framing | null; // cadrage choisi dans l'éditeur de /publier (mode cadre seulement)
 }) {
   const t = useT();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -62,6 +66,10 @@ export default function VideoPlayer({
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
   const [fit, setFit] = useState<"cover" | "contain">("cover");
+  const [naturalAspect, setNaturalAspect] = useState<number | null>(null);
+  // Cadrage : translate() + scale() sur la vidéo (et donc son affiche) dans le cadre overflow-hidden
+  const aspect = framing?.aspect ?? naturalAspect;
+  const framedStyle = frame && framing && aspect ? framedMediaStyle(framing, aspect) : undefined;
   const inView = useRef(false);
   const userPaused = useRef(false); // mis en pause à la main : pas de reprise automatique tant qu'elle reste à l'écran
   const watched = useRef(0);
@@ -171,7 +179,8 @@ export default function VideoPlayer({
   const label = duration ? formatDuration(duration) : null;
 
   return (
-    <div className={frame ? "absolute inset-0 bg-black" : "relative mt-3 overflow-hidden rounded-xl bg-black"}>
+    <div className={frame ? "absolute inset-0 overflow-hidden bg-black" : "relative mt-3 overflow-hidden rounded-xl bg-black"}>
+      {frame && framing && <FramedBackground framing={framing} poster={poster} />}
       <video
         ref={videoRef}
         src={src}
@@ -190,13 +199,19 @@ export default function VideoPlayer({
         }}
         onLoadedMetadata={(e) => {
           const video = e.currentTarget;
-          if (video.videoWidth && video.videoHeight) setFit(video.videoWidth / video.videoHeight <= VERTICAL_RATIO ? "cover" : "contain");
+          if (video.videoWidth && video.videoHeight) {
+            setFit(video.videoWidth / video.videoHeight <= VERTICAL_RATIO ? "cover" : "contain");
+            setNaturalAspect(video.videoWidth / video.videoHeight);
+          }
         }}
         onLoadedData={() => {
           if (inView.current) autoplay();
         }}
+        style={framedStyle}
         className={
-          frame
+          framedStyle
+            ? ""
+            : frame
             ? `absolute inset-0 h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`
             : "mx-auto block max-h-[70vh] min-h-48 w-full object-contain"
         }

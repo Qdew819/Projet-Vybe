@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Framing } from "./framing";
 import {
   POST_BUCKET,
   VIDEO_BUCKET,
@@ -171,7 +172,7 @@ const MEDIA_UPLOAD_CONCURRENCY = 3;
 
 export type MediaDraft =
   | { kind: "image"; blob: Blob }
-  | { kind: "video"; file: File; duration: number; poster: Blob | null };
+  | { kind: "video"; file: File; duration: number; poster: Blob | null; framing?: Framing | null };
 
 // Envoie photos et vidéos (avec leur affiche), 3 à la fois, en gardant l'ordre choisi. onProgress(éléments terminés).
 // Si un seul envoi échoue : plus aucun nouvel envoi, tout ce qui a déjà été envoyé est supprimé et l'erreur est
@@ -204,7 +205,14 @@ export async function uploadPostMedia(
       imagePaths.push(uploaded.path);
       poster = uploaded.url;
     }
-    return { type: "video", url: video.url, poster, duration_s: Math.min(VIDEO_MAX_SECONDS, Math.max(1, Math.round(draft.duration))) };
+    return {
+      type: "video",
+      url: video.url,
+      poster,
+      duration_s: Math.min(VIDEO_MAX_SECONDS, Math.max(1, Math.round(draft.duration))),
+      // Cadrage enregistré seulement s'il a été modifié dans l'éditeur (sinon affichage habituel)
+      ...(draft.framing ? { framing: draft.framing } : {}),
+    };
   }
 
   async function worker() {

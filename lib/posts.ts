@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { EVENT_COLUMNS, type EventRow } from "./events";
 import { loadPeople, type Person } from "./follows";
+import { parseFraming, renderFramedImage, type Framing } from "./framing";
 import type { MessageKey } from "./i18n";
 
 // Publications « Quoi de neuf ? » : tables public.posts, public.post_likes, public.post_comments,
@@ -48,7 +49,14 @@ export type PostRow = {
   created_at: string;
 };
 
-export type MediaItem = { type: "image" | "video"; url: string; poster?: string | null; duration_s?: number | null };
+// framing : cadrage d'une VIDÉO dans le cadre 4:5 (lib/framing.ts) ; les photos sont recadrées avant l'envoi
+export type MediaItem = {
+  type: "image" | "video";
+  url: string;
+  poster?: string | null;
+  duration_s?: number | null;
+  framing?: Framing | null;
+};
 
 function parseMedia(value: unknown): MediaItem[] {
   if (!Array.isArray(value)) return [];
@@ -63,6 +71,7 @@ function parseMedia(value: unknown): MediaItem[] {
         url: item.url,
         poster: typeof item.poster === "string" && item.poster ? item.poster : null,
         duration_s: typeof item.duration_s === "number" ? item.duration_s : null,
+        framing: parseFraming(item.framing),
       },
     ];
   });
@@ -209,7 +218,7 @@ export function isAcceptedPostImage(file: Blob): boolean {
 }
 
 // Image décodée, tournée selon son orientation EXIF (photos d'iPhone prises en portrait)
-async function decodeImage(file: Blob): Promise<ImageBitmap> {
+export async function decodeImage(file: Blob): Promise<ImageBitmap> {
   try {
     return await createImageBitmap(file, { imageOrientation: "from-image" });
   } catch {
@@ -226,7 +235,7 @@ function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob>
 
 // Réduction de bonne qualité : par moitiés successives quand l'écart est grand (évite le crénelage et le flou
 // d'une seule grosse réduction), puis à la taille finale avec le lissage « high »
-function drawScaled(bitmap: ImageBitmap, width: number, height: number): HTMLCanvasElement {
+export function drawScaled(bitmap: ImageBitmap, width: number, height: number): HTMLCanvasElement {
   let source: CanvasImageSource = bitmap;
   let sourceWidth = bitmap.width;
   let sourceHeight = bitmap.height;
@@ -256,18 +265,34 @@ function drawScaled(bitmap: ImageBitmap, width: number, height: number): HTMLCan
   return canvas;
 }
 
+// JPEG à la qualité donnée, réencodé un peu plus fort s'il dépasse la limite de l'espace de stockage (5 Mo)
+async function encodeJpeg(canvas: HTMLCanvasElement, startQuality: number): Promise<Blob> {
+  let quality = startQuality;
+  let blob = await canvasToJpeg(canvas, quality);
+  while (blob.size > IMAGE_MAX_BYTES && quality > 0.6) {
+    quality -= 0.08;
+    blob = await canvasToJpeg(canvas, quality);
+  }
+  return blob;
+}
+
 export async function compressPostImage(file: Blob): Promise<Blob> {
   const bitmap = await decodeImage(file);
   try {
     const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
     const canvas = drawScaled(bitmap, Math.max(1, Math.round(bitmap.width * scale)), Math.max(1, Math.round(bitmap.height * scale)));
-    let quality = IMAGE_QUALITY;
-    let blob = await canvasToJpeg(canvas, quality);
-    while (blob.size > IMAGE_MAX_BYTES && quality > 0.6) {
-      quality -= 0.08;
-      blob = await canvasToJpeg(canvas, quality);
-    }
-    return blob;
+    return await encodeJpeg(canvas, IMAGE_QUALITY);
+  } finally {
+    bitmap.close();
+  }
+}
+
+// Photo recadrée au format 4:5 depuis l'ORIGINAL (orientation EXIF respectée) : 1638 × 2048 au maximum, jamais
+// agrandie au-delà de la résolution d'origine, JPEG 0,88 (lib/framing.ts)
+export async function renderFramedPhoto(original: Blob, framing: Framing): Promise<Blob> {
+  const bitmap = await decodeImage(original);
+  try {
+    return await renderFramedImage(bitmap, framing, { drawScaled, encode: encodeJpeg });
   } finally {
     bitmap.close();
   }

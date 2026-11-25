@@ -12,7 +12,9 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
+import FramedBackground from "./FramedBackground";
 import VideoPlayer from "./VideoPlayer";
+import { framedMediaStyle } from "../lib/framing";
 import { useT } from "../lib/i18n";
 import type { MediaItem } from "../lib/posts";
 import { formatDuration } from "../lib/videos";
@@ -271,7 +273,23 @@ export default function MediaCarousel({
                   aria-label={alt(index)}
                   className="relative h-full w-full shrink-0 snap-center snap-always overflow-hidden bg-black"
                 >
-                  {preview || !postId ? (
+                  {(preview || !postId) && item.framing && item.framing.aspect ? (
+                    // Aperçu d'une vidéo recadrée : même cadrage que la publication, sans les commandes (elles
+                    // seraient déplacées avec la vidéo)
+                    <>
+                      <FramedBackground framing={item.framing} poster={item.poster ?? null} />
+                      <video
+                        src={item.url}
+                        poster={item.poster ?? undefined}
+                        muted
+                        playsInline
+                        autoPlay
+                        loop
+                        preload="metadata"
+                        style={framedMediaStyle(item.framing, item.framing.aspect)}
+                      />
+                    </>
+                  ) : preview || !postId ? (
                     <>
                       <video
                         src={item.url}
@@ -289,7 +307,14 @@ export default function MediaCarousel({
                       ) : null}
                     </>
                   ) : (
-                    <VideoPlayer frame postId={postId} src={item.url} poster={item.poster ?? null} duration={item.duration_s ?? null} />
+                    <VideoPlayer
+                      frame
+                      framing={item.framing ?? null}
+                      postId={postId}
+                      src={item.url}
+                      poster={item.poster ?? null}
+                      duration={item.duration_s ?? null}
+                    />
                   )}
                   {overlay?.(index)}
                 </div>
