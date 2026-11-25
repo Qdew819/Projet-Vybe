@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { PlayIcon } from "./home/MediaThumb";
+import { PostSoundContext } from "./PostSoundContext";
 import { useT } from "../lib/i18n";
 import { createClient } from "../lib/supabase/client";
+import { claimSound, setMediaVolume, toggleSound, useSoundOn } from "../lib/sound";
 import { formatDuration, recordView } from "../lib/videos";
 
 // ---------- Une seule vidéo à la fois sur toute la page ----------
@@ -16,37 +18,7 @@ function playExclusive(video: HTMLVideoElement): Promise<void> {
   return video.play();
 }
 
-// ---------- Son coupé / activé : choix mémorisé pour la session, partagé par tous les lecteurs ----------
-
-const MUTED_KEY = "vybe.videoMuted";
-const mutedListeners = new Set<() => void>();
-
-function readMuted(): boolean {
-  try {
-    return window.sessionStorage.getItem(MUTED_KEY) !== "0";
-  } catch {
-    return true;
-  }
-}
-
-function writeMuted(muted: boolean) {
-  try {
-    window.sessionStorage.setItem(MUTED_KEY, muted ? "1" : "0");
-  } catch {
-    // Stockage indisponible : le choix vaut jusqu'au rechargement
-  }
-  mutedListeners.forEach((listener) => listener());
-}
-
-function subscribeMuted(listener: () => void) {
-  mutedListeners.add(listener);
-  return () => mutedListeners.delete(listener);
-}
-
-// Muet au premier rendu (serveur et hydratation), puis le choix de la session
-function useSessionMuted(): boolean {
-  return useSyncExternalStore(subscribeMuted, readMuted, () => true);
-}
+// ---------- Son : choix commun à toute la page (lib/sound.ts), réglages de la publication (PostSoundContext) ----------
 
 const VISIBLE_RATIO = 0.6;
 const VERTICAL_RATIO = 0.8; // largeur / hauteur en dessous de laquelle la vidéo remplit le cadre (cover)
@@ -83,7 +55,10 @@ export default function VideoPlayer({
 }) {
   const t = useT();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const muted = useSessionMuted();
+  const soundOn = useSoundOn();
+  const { originalSound, originalVolume } = useContext(PostSoundContext);
+  // Muette tant que le son n'est pas activé, ou si l'auteur a retiré le son d'origine (la musique reste)
+  const muted = !soundOn || !originalSound;
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
   const [fit, setFit] = useState<"cover" | "contain">("cover");
@@ -93,10 +68,21 @@ export default function VideoPlayer({
   const lastTime = useRef(0);
   const counted = useRef(false);
 
-  // L'attribut muted de React ne suit pas les changements : on règle la propriété directement
+  // L'attribut muted de React ne suit pas les changements : on règle la propriété directement.
+  // Volume par Web Audio (GainNode) : Safari ignore .volume.
   useEffect(() => {
-    if (videoRef.current) videoRef.current.muted = muted;
-  }, [muted]);
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = muted;
+    if (!muted) setMediaVolume(video, originalVolume);
+  }, [muted, originalVolume]);
+
+  // Vidéo audible : elle « prend » le son de la page (le son d'une autre publication s'arrête)
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !playing || muted) return;
+    return claimSound(postId, () => video.pause());
+  }, [playing, muted, postId]);
 
   // Lecture automatique : son selon le choix de la session ; si le navigateur refuse le son, on relance en muet
   const autoplay = useCallback(() => {
@@ -150,10 +136,9 @@ export default function VideoPlayer({
     }
   }
 
+  // Haut-parleur : active ou coupe le son de toute la page (pendant le geste : nécessaire pour l'AudioContext)
   function toggleMute() {
-    const next = !muted;
-    writeMuted(next);
-    if (videoRef.current) videoRef.current.muted = next;
+    toggleSound();
   }
 
   // Temps de lecture cumulé (les sauts et le retour au début de la boucle ne comptent pas)
@@ -185,6 +170,7 @@ export default function VideoPlayer({
         src={src}
         poster={poster ?? undefined}
         preload="metadata"
+        crossOrigin="anonymous"
         playsInline
         muted
         loop
@@ -238,13 +224,13 @@ export default function VideoPlayer({
           <button
             type="button"
             onClick={toggleMute}
-            aria-label={muted ? t("video.unmute") : t("video.mute")}
-            aria-pressed={!muted}
+            aria-label={soundOn ? t("video.mute") : t("video.unmute")}
+            aria-pressed={soundOn}
             className="absolute bottom-2 left-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm focus-visible:outline-2 focus-visible:outline-white"
           >
             <svg {...iconProps} className="h-5 w-5">
               <path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" fill="currentColor" />
-              {muted ? <path d="M16 9.5l5 5M21 9.5l-5 5" /> : <path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" />}
+              {!soundOn ? <path d="M16 9.5l5 5M21 9.5l-5 5" /> : <path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" />}
             </svg>
           </button>
           {(label || views) && (

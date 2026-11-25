@@ -106,3 +106,14 @@ dialog {
 @media (prefers-reduced-motion: reduce) {
   .reel-heart, .reel-flash { animation: none; }
 }
+
+/* Ligne « ♪ Titre · Artiste » trop longue : le texte défile (deux copies côte à côte, boucle sans à-coup).
+   Sans défilement si la personne préfère réduire les mouvements (le texte est alors coupé avec « … »). */
+@keyframes music-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.music-marquee { animation: music-marquee var(--marquee-duration, 10s) linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .music-marquee { animation: none; }
+}

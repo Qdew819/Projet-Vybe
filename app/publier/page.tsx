@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Avatar from "../../components/Avatar";
 import MediaCarousel from "../../components/MediaCarousel";
+import SoundSection, { DEFAULT_SOUND, type SoundChoice } from "../../components/music/SoundSection";
 import { EVENT_COLUMNS, fetchMyStatuses, formatEventDate, type EventRow } from "../../lib/events";
 import { loadPeople, type Person } from "../../lib/follows";
 import { useLanguage, useT } from "../../lib/i18n";
@@ -21,6 +22,7 @@ import {
 import { initialsOf } from "../../lib/profile";
 import { createClient } from "../../lib/supabase/client";
 import { useSportOptions, type SportOption } from "../../lib/sportOptions";
+import { MUSIC_CLIP_SECONDS } from "../../lib/sound";
 import { loadMySports } from "../../lib/userSports";
 import {
   VIDEO_ACCEPT,
@@ -76,6 +78,7 @@ export default function Publier() {
   const [videoPreparing, setVideoPreparing] = useState(0); // vidéos en préparation
   const [mediaError, setMediaError] = useState("");
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  const [soundChoice, setSoundChoice] = useState<SoundChoice>(DEFAULT_SOUND);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const [sport, setSport] = useState<string | null>(null);
@@ -282,12 +285,20 @@ export default function Publier() {
       }
     }
 
-    // 2. Publication : posts.media + anciennes colonnes (photos, première vidéo) pour rester compatible
+    // 2. Publication : posts.media + anciennes colonnes (photos, première vidéo) pour rester compatible, et le son
+    const { track } = soundChoice;
+    const maxStart = Math.max(0, Math.floor((track?.duration_s ?? 0) - MUSIC_CLIP_SECONDS));
+    const hasVideo = media.some((m) => m.type === "video");
     const { error: insertError } = await supabase.from("posts").insert({
       author_id: me.id,
       body: body.trim(),
       media,
       ...legacyColumns(media),
+      music_track_id: track?.id ?? null,
+      music_start_s: track ? Math.min(Math.round(soundChoice.musicStart), maxStart) : 0,
+      music_volume: track ? soundChoice.musicVolume : 1,
+      original_sound: hasVideo ? soundChoice.originalSound : true,
+      original_volume: hasVideo ? soundChoice.originalVolume : 1,
       sport,
       event_id: eventId,
     });
@@ -482,6 +493,9 @@ export default function Publier() {
             {mediaError}
           </p>
         </section>
+
+        {/* Son : son d'origine des vidéos et musique de la bibliothèque Vybe (pas d'import de fichier audio) */}
+        <SoundSection value={soundChoice} onChange={setSoundChoice} hasVideo={videoCount > 0} disabled={publishing} />
 
         {/* Sport (facultatif, un seul) */}
         <section aria-labelledby="titre-sport" className="mt-4">

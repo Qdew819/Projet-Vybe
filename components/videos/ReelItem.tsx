@@ -6,6 +6,7 @@ import Link from "next/link";
 import Avatar from "../Avatar";
 import ConfirmDialog from "../ConfirmDialog";
 import ExpandableText from "../ExpandableText";
+import MusicCredit from "../music/MusicCredit";
 import { PostMenu } from "../PostCard";
 import ReportDialog, { type ReportReason } from "../ReportDialog";
 import ShareButton from "../ShareButton";
@@ -13,10 +14,12 @@ import { formatEventDate } from "../../lib/events";
 import { followUser, type FollowStatus } from "../../lib/follows";
 import { useLanguage, useT } from "../../lib/i18n";
 import { deletePost, postMedia, setLike, type MediaItem, type PostRow, type PostStats } from "../../lib/posts";
+import { postSound, useMusicTrack } from "../../lib/music";
 import { initialsOf } from "../../lib/profile";
 import { postSharePath } from "../../lib/share";
 import { createClient } from "../../lib/supabase/client";
 import type { Reel } from "../../lib/videoFeed";
+import { setMediaVolume, useMusicPlayer } from "../../lib/sound";
 import { recordView } from "../../lib/videos";
 
 const DOUBLE_TAP_MS = 280;
@@ -177,6 +180,16 @@ function LiveReel({
   const failed = failedAt.includes(current);
   const shouldPlay = active && !paused && !failed && !hidden;
   const multiple = videos.length > 1;
+  // Son de la publication : musique de la bibliothèque Vybe et réglages du son d'origine
+  const sound = postSound(post);
+  const track = useMusicTrack(sound.trackId);
+  useMusicPlayer({
+    ownerKey: post.id,
+    url: track?.audio_url ?? null,
+    start: sound.start,
+    volume: sound.musicVolume,
+    playing: shouldPlay && soundOn && Boolean(track),
+  });
 
   // Lecture : seulement la vidéo courante de la publication courante ; son si demandé et autorisé, sinon muet
   useEffect(() => {
@@ -189,8 +202,10 @@ function LiveReel({
       video.pause();
       return;
     }
-    const withSound = soundOn && hasUserActivation();
+    // Son d'origine seulement si l'auteur l'a gardé ; volume par Web Audio (Safari ignore .volume)
+    const withSound = soundOn && hasUserActivation() && sound.originalSound;
     video.muted = !withSound;
+    if (withSound) setMediaVolume(video, sound.originalVolume);
     video.play().catch(() => {
       if (!video.muted) {
         // Son refusé par le navigateur : on relance en muet
@@ -199,7 +214,7 @@ function LiveReel({
         video.play().catch(() => undefined);
       }
     });
-  }, [shouldPlay, soundOn, onSoundBlocked, current]);
+  }, [shouldPlay, soundOn, onSoundBlocked, current, sound.originalSound, sound.originalVolume]);
 
   // Page quittée (cachée par Next avec <Activity>, pas démontée) ou vidéo démontée : pause, sinon le son continuerait
   useEffect(() => {
@@ -384,6 +399,7 @@ function LiveReel({
                 src={item.url}
                 poster={item.poster ?? undefined}
                 preload={index === current ? preload : active && Math.abs(index - current) === 1 ? "metadata" : "none"}
+                crossOrigin="anonymous"
                 playsInline
                 muted
                 loop
@@ -597,6 +613,7 @@ function LiveReel({
             </span>
           )}
         </p>
+        {track && <MusicCredit track={track} variant="reel" />}
         {body && (
           <div data-scrollable className={captionOpen ? "max-h-[40dvh] overflow-y-auto overscroll-contain" : ""}>
             <ExpandableText

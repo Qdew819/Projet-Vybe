@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CommentsSheet from "./CommentsSheet";
@@ -8,34 +8,12 @@ import ReelItem, { ReelSkeleton } from "./ReelItem";
 import type { FollowStatus } from "../../lib/follows";
 import { useT } from "../../lib/i18n";
 import type { PostRow, PostStats } from "../../lib/posts";
+import { setSoundOn, useSoundOn } from "../../lib/sound";
 import { createClient } from "../../lib/supabase/client";
 import { useSportsCatalog } from "../../lib/userSports";
 import { fetchNextReels, loadReels, newCursor, type FeedCursor, type FeedTab, type Reel } from "../../lib/videoFeed";
 
-// ---------- Son du fil : choix mémorisé pour la session ----------
-
-const SOUND_KEY = "vybe.reelsSound"; // « on » | « off » ; rien : on essaie avec le son
-const soundListeners = new Set<() => void>();
-
-function readSound(): boolean {
-  try {
-    return window.sessionStorage.getItem(SOUND_KEY) !== "off";
-  } catch {
-    return true;
-  }
-}
-function writeSound(on: boolean) {
-  try {
-    window.sessionStorage.setItem(SOUND_KEY, on ? "on" : "off");
-  } catch {
-    // Stockage indisponible : le choix vaut jusqu'au rechargement
-  }
-  soundListeners.forEach((listener) => listener());
-}
-function subscribeSound(listener: () => void) {
-  soundListeners.add(listener);
-  return () => soundListeners.delete(listener);
-}
+// Son du fil : choix commun à toute la visite (lib/sound.ts). Tout démarre en muet ; le haut-parleur l'active.
 
 const VISIBLE_RATIO = 0.7;
 const LOAD_AHEAD = 3; // charge la suite quand il reste 3 vidéos
@@ -59,7 +37,7 @@ export default function VideoFeed({ startId, sport: sportFilter = null }: { star
   const router = useRouter();
   const t = useT();
   const { state: catalog } = useSportsCatalog();
-  const soundWanted = useSyncExternalStore(subscribeSound, readSound, () => true);
+  const soundWanted = useSoundOn();
 
   const [me, setMe] = useState("");
   const [tab, setTab] = useState<FeedTab>("forYou");
@@ -241,12 +219,13 @@ export default function VideoFeed({ startId, sport: sportFilter = null }: { star
   }, []);
   const onSoundBlocked = useCallback(() => setSoundBlocked(true), []);
 
+  // Pendant le geste : setSoundOn crée l'AudioContext (volumes sur iPhone)
   function toggleSound() {
     if (soundOn) {
-      writeSound(false);
+      setSoundOn(false);
     } else {
       setSoundBlocked(false);
-      writeSound(true);
+      setSoundOn(true);
     }
   }
 

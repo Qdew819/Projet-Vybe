@@ -8,17 +8,22 @@ import Link from "next/link";
 import Avatar from "./Avatar";
 import ConfirmDialog from "./ConfirmDialog";
 import MediaCarousel from "./MediaCarousel";
+import MusicCredit from "./music/MusicCredit";
+import SoundButton from "./music/SoundButton";
+import { PostSoundContext } from "./PostSoundContext";
 import ExpandableText from "./ExpandableText";
 import ReportDialog, { type ReportReason } from "./ReportDialog";
 import ShareButton from "./ShareButton";
 import { formatEventDate, type EventRow } from "../lib/events";
 import type { Person } from "../lib/follows";
 import { useLanguage, useT } from "../lib/i18n";
+import { postSound, useMusicTrack } from "../lib/music";
 import { deletePost, postMedia, setLike, type PostRow, type PostStats } from "../lib/posts";
 import { initialsOf } from "../lib/profile";
 import { postSharePath } from "../lib/share";
 import { sportImage } from "../lib/sportImages";
 import { createClient } from "../lib/supabase/client";
+import { useMusicPlayer, useSoundOn, useVisible } from "../lib/sound";
 import { relativeTime } from "../lib/time";
 import { useMounted } from "../lib/useMounted";
 
@@ -80,6 +85,23 @@ export default function PostCard({
   const media = postMedia(post);
   const images = media.filter((m) => m.type === "image").map((m) => m.url);
   const isVideo = media.some((m) => m.type === "video");
+
+  // Son : musique de la bibliothèque Vybe (à partir du passage choisi, en boucle sur 30 s) quand la publication est
+  // visible à plus de 60 % et que le son est activé ; les vidéos lisent les réglages du son d'origine (contexte)
+  const sound = postSound(post);
+  const track = useMusicTrack(sound.trackId);
+  const soundOn = useSoundOn();
+  // Zone observée : les photos et vidéos s'il y en a, sinon toute la carte
+  const frameRef = useRef<HTMLElement | null>(null);
+  const visible = useVisible(frameRef);
+  useMusicPlayer({
+    ownerKey: post.id,
+    url: track?.audio_url ?? null,
+    start: sound.start,
+    volume: sound.musicVolume,
+    playing: Boolean(track) && visible && soundOn,
+  });
+  const audible = Boolean(sound.trackId) || (isVideo && sound.originalSound);
   const format = new Intl.NumberFormat(language === "en" ? "en-CA" : "fr-CA", { notation: "compact" });
 
   async function toggleLike() {
@@ -140,7 +162,13 @@ export default function PostCard({
   }
 
   return (
-    <article aria-label={t("home.postBy").replace("{name}", name)} className="rounded-2xl border border-line bg-surface p-3">
+    <article
+      ref={(element) => {
+        if (media.length === 0) frameRef.current = element;
+      }}
+      aria-label={t("home.postBy").replace("{name}", name)}
+      className="rounded-2xl border border-line bg-surface p-3"
+    >
       <header className="flex items-center gap-3">
         <Avatar src={author?.avatarUrl ?? null} initial={initialsOf(name)} alt="" size={44} neon />
         <div className="min-w-0 flex-1">
@@ -157,7 +185,10 @@ export default function PostCard({
           <p className="text-xs text-muted">
             <time dateTime={post.created_at}>{relativeTime(post.created_at, language, new Date(now))}</time>
           </p>
+          {track && <MusicCredit track={track} />}
         </div>
+        {/* Haut-parleur : tout démarre en muet ; le choix vaut ensuite pour toute la visite */}
+        {audible && <SoundButton className="text-muted hover:text-foreground" />}
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
@@ -184,14 +215,22 @@ export default function PostCard({
 
       {media.length > 0 && (
         // Un élément à la fois, on glisse pour les suivants ; un toucher simple sur une photo l'ouvre en grand
-        <MediaCarousel
-          items={media}
-          postId={post.id}
-          videoBadge
-          onOpen={(index) => setViewer(media.slice(0, index).filter((m) => m.type === "image").length)}
-          openLabel={t("post.openPhoto")}
+        <div
+          ref={(element) => {
+            frameRef.current = element;
+          }}
           className="mt-3"
-        />
+        >
+          <PostSoundContext.Provider value={{ originalSound: sound.originalSound, originalVolume: sound.originalVolume }}>
+            <MediaCarousel
+              items={media}
+              postId={post.id}
+              videoBadge
+              onOpen={(index) => setViewer(media.slice(0, index).filter((m) => m.type === "image").length)}
+              openLabel={t("post.openPhoto")}
+            />
+          </PostSoundContext.Provider>
+        </div>
       )}
 
       {event && <LinkedEvent event={event} />}
