@@ -143,28 +143,85 @@ export async function setLike(supabase: SupabaseClient, postId: string, me: stri
 
 // ---------- Photos ----------
 
-const IMAGE_MAX_SIDE = 1280;
+// Photos envoyées : côté le plus long 2048 px au maximum (une photo plus petite n'est jamais agrandie), JPEG 0,88.
+// JPEG plutôt que WebP : Safari (iPhone) ne sait pas produire de WebP avec canvas.toBlob et donnerait un PNG énorme.
+const IMAGE_MAX_SIDE = 2048;
+const IMAGE_QUALITY = 0.88;
+// Limite de l'espace de stockage « posts » : au-delà, on réencode un peu plus fort (rare à 2048 px)
+const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+// HEIC / HEIF : sur iPhone, Safari convertit déjà la photo en JPEG à pleine résolution (le champ n'accepte que
+// JPEG, PNG et WebP). Un fichier HEIC qui arrive quand même (glisser-déposer…) est décodé par le navigateur
+// s'il en est capable (Safari) ; sinon la préparation échoue avec un message clair.
+const HEIC_TYPES = ["image/heic", "image/heif"];
 
 export function isAcceptedPostImage(file: Blob): boolean {
-  return POST_IMAGE_ACCEPT.split(",").includes(file.type);
+  return POST_IMAGE_ACCEPT.split(",").includes(file.type) || HEIC_TYPES.includes(file.type);
 }
 
-// Côté le plus long réduit à 1280 px, JPEG qualité 0,8
-export async function compressPostImage(file: Blob): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+// Image décodée, tournée selon son orientation EXIF (photos d'iPhone prises en portrait)
+async function decodeImage(file: Blob): Promise<ImageBitmap> {
+  try {
+    return await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    // Anciens navigateurs sans options : ils appliquent déjà l'orientation EXIF par défaut
+    return createImageBitmap(file);
+  }
+}
+
+function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Conversion impossible"))), "image/jpeg", quality);
+  });
+}
+
+// Réduction de bonne qualité : par moitiés successives quand l'écart est grand (évite le crénelage et le flou
+// d'une seule grosse réduction), puis à la taille finale avec le lissage « high »
+function drawScaled(bitmap: ImageBitmap, width: number, height: number): HTMLCanvasElement {
+  let source: CanvasImageSource = bitmap;
+  let sourceWidth = bitmap.width;
+  let sourceHeight = bitmap.height;
+  while (sourceWidth / 2 >= width * 1.5) {
+    const half = document.createElement("canvas");
+    half.width = Math.round(sourceWidth / 2);
+    half.height = Math.round(sourceHeight / 2);
+    const context = half.getContext("2d");
+    if (!context) break;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(source, 0, 0, half.width, half.height);
+    source = half;
+    sourceWidth = half.width;
+    sourceHeight = half.height;
+  }
   const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
+  canvas.width = width;
+  canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Canvas indisponible");
   context.fillStyle = "#ffffff"; // les zones transparentes d'un PNG ne deviennent pas noires
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Conversion impossible"))), "image/jpeg", 0.8);
-  });
+  context.fillRect(0, 0, width, height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(source, 0, 0, width, height);
+  return canvas;
+}
+
+export async function compressPostImage(file: Blob): Promise<Blob> {
+  const bitmap = await decodeImage(file);
+  try {
+    const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    const canvas = drawScaled(bitmap, Math.max(1, Math.round(bitmap.width * scale)), Math.max(1, Math.round(bitmap.height * scale)));
+    let quality = IMAGE_QUALITY;
+    let blob = await canvasToJpeg(canvas, quality);
+    while (blob.size > IMAGE_MAX_BYTES && quality > 0.6) {
+      quality -= 0.08;
+      blob = await canvasToJpeg(canvas, quality);
+    }
+    return blob;
+  } finally {
+    bitmap.close();
+  }
 }
 
 // Envoie une photo dans posts/<userId>/<uuid>.jpg ; renvoie son chemin (pour la supprimer) et son adresse publique

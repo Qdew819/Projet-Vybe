@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Avatar from "../../components/Avatar";
+import ImageCarousel from "../../components/ImageCarousel";
 import { EVENT_COLUMNS, fetchMyStatuses, formatEventDate, type EventRow } from "../../lib/events";
 import { loadPeople, type Person } from "../../lib/follows";
 import { useLanguage, useT, type MessageKey } from "../../lib/i18n";
@@ -386,24 +386,24 @@ export default function Publier() {
             {t("publish.photos")}
           </h2>
           {photos.length > 0 && (
-            <ul className="mb-3 grid grid-cols-2 gap-2">
-              {photos.map((photo, index) => (
-                <li key={photo.id} className="relative aspect-square overflow-hidden rounded-xl bg-line">
-                  <Image src={photo.preview} alt={t("publish.photoN").replace("{n}", String(index + 1))} fill unoptimized sizes="240px" className="object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => removePhoto(photo)}
-                    disabled={publishing}
-                    aria-label={t("publish.removePhoto").replace("{n}", String(index + 1))}
-                    className="absolute right-1.5 top-1.5 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm focus-visible:outline-2 focus-visible:outline-white"
-                  >
-                    <svg {...iconProps} className="h-5 w-5" strokeWidth={2.5}>
-                      <path d="M6 6l12 12M18 6L6 18" />
-                    </svg>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            // Même carrousel que les publications ; « × » en haut à gauche (le compteur est en haut à droite)
+            <ImageCarousel
+              images={photos.map((photo) => photo.preview)}
+              className="mb-3"
+              overlay={(index) => (
+                <button
+                  type="button"
+                  onClick={() => removePhoto(photos[index])}
+                  disabled={publishing}
+                  aria-label={t("publish.removePhoto").replace("{n}", String(index + 1))}
+                  className="absolute left-2 top-2 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white focus-visible:outline-2 focus-visible:outline-white"
+                >
+                  <svg {...iconProps} className="h-5 w-5" strokeWidth={2.5}>
+                    <path d="M6 6l12 12M18 6L6 18" />
+                  </svg>
+                </button>
+              )}
+            />
           )}
           {video && (
             <div className="relative mb-3 overflow-hidden rounded-xl bg-black">

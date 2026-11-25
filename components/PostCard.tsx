@@ -7,6 +7,7 @@ import Image from "next/image";
 import Link from "next/link";
 import Avatar from "./Avatar";
 import ConfirmDialog from "./ConfirmDialog";
+import ImageCarousel from "./ImageCarousel";
 import ExpandableText from "./ExpandableText";
 import ReportDialog, { type ReportReason } from "./ReportDialog";
 import ShareButton from "./ShareButton";
@@ -188,7 +189,10 @@ export default function PostCard({
           duration={post.video_duration_s ?? null}
         />
       ) : (
-        images.length > 0 && <PhotoGrid images={images} onOpen={setViewer} label={t("post.openPhoto")} />
+        images.length > 0 && (
+          // Une photo à la fois, on glisse pour les suivantes ; un toucher simple l'ouvre en grand
+          <ImageCarousel images={images} onOpen={setViewer} openLabel={t("post.openPhoto")} className="mt-3" />
+        )
       )}
 
       {event && <LinkedEvent event={event} />}
@@ -315,34 +319,6 @@ export default function PostCard({
 }
 
 // ---------- Photos ----------
-
-// 1 photo : pleine largeur ; 2 : deux colonnes ; 3 ou 4 : une grande à gauche, les autres empilées à droite
-function PhotoGrid({ images, onOpen, label }: { images: string[]; onOpen: (index: number) => void; label: string }) {
-  const count = images.length;
-  const layout =
-    count === 1 ? "grid-cols-1" : count === 2 ? "grid-cols-2" : count === 3 ? "grid-cols-2 grid-rows-2" : "grid-cols-3 grid-rows-3";
-  return (
-    <div className={`mt-3 grid gap-1 overflow-hidden rounded-xl ${layout} ${count === 1 ? "" : "aspect-[4/3]"}`}>
-      {images.map((src, index) => {
-        const big = count >= 3 && index === 0;
-        const span = big ? (count === 3 ? "row-span-2" : "col-span-2 row-span-3") : "";
-        return (
-          <button
-            key={src}
-            type="button"
-            onClick={() => onOpen(index)}
-            aria-label={label.replace("{n}", String(index + 1)).replace("{total}", String(count))}
-            className={`relative block min-h-0 overflow-hidden bg-line focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-ink ${span} ${
-              count === 1 ? "aspect-[4/3]" : ""
-            }`}
-          >
-            <Image src={src} alt="" fill unoptimized sizes="(max-width: 500px) 100vw, 476px" className="object-cover" />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 // Photo en grand (fenêtre modale), avec précédente / suivante
 function PhotoViewer({ images, index, onChange }: { images: string[]; index: number | null; onChange: (index: number | null) => void }) {
