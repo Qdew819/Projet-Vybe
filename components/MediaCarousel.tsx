@@ -13,6 +13,8 @@ import {
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import FramedBackground from "./FramedBackground";
+import TextOverlayLayer from "./TextOverlayLayer";
+import { fromOverlays, textAlt } from "../lib/overlayData";
 import VideoPlayer from "./VideoPlayer";
 import { framedMediaStyle } from "../lib/framing";
 import { useT } from "../lib/i18n";
@@ -105,10 +107,15 @@ export default function MediaCarousel({
     live.current = { items, active };
   });
 
-  const alt = (index: number) =>
-    t(items[index]?.type === "video" ? "carousel.videoOf" : "carousel.photoOf")
+  // « Photo 2 sur 3 », suivi du texte écrit sur la photo ou par-dessus la vidéo (accessibilité)
+  const alt = (index: number) => {
+    const item = items[index];
+    const base = t(item?.type === "video" ? "carousel.videoOf" : "carousel.photoOf")
       .replace("{n}", String(index + 1))
       .replace("{total}", String(count));
+    const written = item?.type === "video" ? textAlt(item.overlays) : (item?.alt ?? "");
+    return written ? `${base} : ${written}` : base;
+  };
   const altRef = useRef(alt);
   useEffect(() => {
     altRef.current = alt;
@@ -288,6 +295,7 @@ export default function MediaCarousel({
                         preload="metadata"
                         style={framedMediaStyle(item.framing, item.framing.aspect)}
                       />
+                      {item.overlays && <TextOverlayLayer blocks={fromOverlays(item.overlays)} />}
                     </>
                   ) : preview || !postId ? (
                     <>
@@ -300,6 +308,7 @@ export default function MediaCarousel({
                         preload="metadata"
                         className="absolute inset-0 h-full w-full object-contain"
                       />
+                      {item.overlays && <TextOverlayLayer blocks={fromOverlays(item.overlays)} />}
                       {item.duration_s ? (
                         <span className="pointer-events-none absolute bottom-14 right-2 rounded-md bg-black/75 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white">
                           {formatDuration(item.duration_s)}
@@ -314,6 +323,7 @@ export default function MediaCarousel({
                       src={item.url}
                       poster={item.poster ?? null}
                       duration={item.duration_s ?? null}
+                      overlay={item.overlays ? <TextOverlayLayer blocks={fromOverlays(item.overlays)} /> : null}
                     />
                   )}
                   {overlay?.(index)}

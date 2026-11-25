@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Framing } from "./framing";
+import type { MediaOverlay } from "./overlayData";
 import {
   POST_BUCKET,
   VIDEO_BUCKET,
@@ -171,8 +172,8 @@ export async function uploadPoster(supabase: SupabaseClient, userId: string, id:
 const MEDIA_UPLOAD_CONCURRENCY = 3;
 
 export type MediaDraft =
-  | { kind: "image"; blob: Blob }
-  | { kind: "video"; file: File; duration: number; poster: Blob | null; framing?: Framing | null };
+  | { kind: "image"; blob: Blob; alt?: string }
+  | { kind: "video"; file: File; duration: number; poster: Blob | null; framing?: Framing | null; overlays?: MediaOverlay[] | null };
 
 // Envoie photos et vidéos (avec leur affiche), 3 à la fois, en gardant l'ordre choisi. onProgress(éléments terminés).
 // Si un seul envoi échoue : plus aucun nouvel envoi, tout ce qui a déjà été envoyé est supprimé et l'erreur est
@@ -194,7 +195,7 @@ export async function uploadPostMedia(
     if (draft.kind === "image") {
       const image = await uploadPostImage(supabase, userId, draft.blob);
       imagePaths.push(image.path);
-      return { type: "image", url: image.url };
+      return { type: "image", url: image.url, ...(draft.alt ? { alt: draft.alt } : {}) };
     }
     const id = crypto.randomUUID();
     const video = await uploadVideo(supabase, userId, id, draft.file, () => undefined);
@@ -212,6 +213,8 @@ export async function uploadPostMedia(
       duration_s: Math.min(VIDEO_MAX_SECONDS, Math.max(1, Math.round(draft.duration))),
       // Cadrage enregistré seulement s'il a été modifié dans l'éditeur (sinon affichage habituel)
       ...(draft.framing ? { framing: draft.framing } : {}),
+      // Textes par-dessus la vidéo (pas de réencodage)
+      ...(draft.overlays && draft.overlays.length > 0 ? { overlays: draft.overlays } : {}),
     };
   }
 

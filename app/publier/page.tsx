@@ -6,6 +6,7 @@ import Avatar from "../../components/Avatar";
 import MediaCarousel from "../../components/MediaCarousel";
 import MediaEditor from "../../components/publish/MediaEditor";
 import type { Framing } from "../../lib/framing";
+import { drawTextBlocks, textAlt, toOverlays, type TextBlock } from "../../lib/textOverlay";
 import SoundSection, { DEFAULT_SOUND, type SoundChoice } from "../../components/music/SoundSection";
 import { EVENT_COLUMNS, fetchMyStatuses, formatEventDate, type EventRow } from "../../lib/events";
 import { loadPeople, type Person } from "../../lib/follows";
@@ -53,6 +54,7 @@ type Draft =
       blob: Blob;
       preview: string;
       framing?: Framing;
+      texts?: TextBlock[]; // textes de l'éditeur (redessinés depuis l'original à chaque modification)
     }
   | {
       id: string;
@@ -64,6 +66,7 @@ type Draft =
       poster: Blob | null;
       posterPreview: string | null;
       framing?: Framing;
+      texts?: TextBlock[]; // textes par-dessus la vidéo (enregistrés dans posts.media, sans réencodage)
     };
 
 // Boutons « Ajouter une photo » / « Ajouter une vidéo » (désactivés : estompés, sans survol)
@@ -284,27 +287,29 @@ export default function Publier() {
     setItems(itemsRef.current);
   }
 
-  async function finishEditing(framing: Framing) {
+  async function finishEditing(framing: Framing, texts: TextBlock[]) {
     const item = itemsRef.current.find((d) => d.id === editingId);
     if (!item) {
       setEditingId(null);
       return;
     }
     if (item.kind === "video") {
-      // Vidéo : seulement le cadrage (pas de réencodage)
-      updateItem(item.id, (d) => ({ ...d, framing }));
+      // Vidéo : seulement le cadrage et les textes (pas de réencodage)
+      updateItem(item.id, (d) => ({ ...d, framing, texts }));
       setEditingId(null);
       return;
     }
     // Photo : image 4:5 générée depuis l'original (ou la base si l'original ne se décode pas, ex. HEIC)
     setEditBusy(true);
     try {
-      const blob = await renderFramedPhoto(item.original, framing).catch(() => renderFramedPhoto(item.base, framing));
+      // Texte dessiné dans le même canvas, à la résolution réelle de l'image finale
+      const overlay = texts.length > 0 ? (ctx: CanvasRenderingContext2D, W: number, H: number) => drawTextBlocks(ctx, texts, W, H) : undefined;
+      const blob = await renderFramedPhoto(item.original, framing, overlay).catch(() => renderFramedPhoto(item.base, framing, overlay));
       const preview = URL.createObjectURL(blob);
       updateItem(item.id, (d) => {
         if (d.kind !== "image") return d;
         if (d.preview !== d.basePreview) URL.revokeObjectURL(d.preview);
-        return { ...d, blob, preview, framing };
+        return { ...d, blob, preview, framing, texts };
       });
       setEditingId(null);
     } catch (err) {
@@ -344,8 +349,15 @@ export default function Publier() {
           me.id,
           items.map((item) =>
             item.kind === "image"
-              ? { kind: "image" as const, blob: item.blob }
-              : { kind: "video" as const, file: item.file, duration: item.duration, poster: item.poster, framing: item.framing ?? null }
+              ? { kind: "image" as const, blob: item.blob, alt: textAlt(item.texts) }
+              : {
+                  kind: "video" as const,
+                  file: item.file,
+                  duration: item.duration,
+                  poster: item.poster,
+                  framing: item.framing ?? null,
+                  overlays: toOverlays(item.texts ?? []),
+                }
           ),
           (done) => setUploadProgress({ done, total })
         );
@@ -463,13 +475,14 @@ export default function Publier() {
             <MediaCarousel
               items={items.map((item) =>
                 item.kind === "image"
-                  ? { type: "image", url: item.preview }
+                  ? { type: "image", url: item.preview, alt: textAlt(item.texts) }
                   : {
                       type: "video",
                       url: item.preview,
                       poster: item.posterPreview,
                       duration_s: item.duration,
                       framing: item.framing ? { ...item.framing, aspect: item.framing.aspect ?? item.aspect ?? undefined } : null,
+                      overlays: item.texts && item.texts.length > 0 ? toOverlays(item.texts) : null,
                     }
               )}
               preview
@@ -673,9 +686,10 @@ export default function Publier() {
                 : { kind: "video", src: item.preview, poster: item.posterPreview, aspect: item.aspect }
             }
             initial={item.framing ?? null}
+            initialTexts={item.texts ?? []}
             busy={editBusy}
             onCancel={() => !editBusy && setEditingId(null)}
-            onDone={(framing) => void finishEditing(framing)}
+            onDone={(framing, texts) => void finishEditing(framing, texts)}
           />
         );
       })()}

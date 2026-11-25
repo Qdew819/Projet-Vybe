@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { EVENT_COLUMNS, type EventRow } from "./events";
 import { loadPeople, type Person } from "./follows";
 import { parseFraming, renderFramedImage, type Framing } from "./framing";
+import { parseOverlays, type MediaOverlay } from "./overlayData";
 import type { MessageKey } from "./i18n";
 
 // Publications « Quoi de neuf ? » : tables public.posts, public.post_likes, public.post_comments,
@@ -56,6 +57,8 @@ export type MediaItem = {
   poster?: string | null;
   duration_s?: number | null;
   framing?: Framing | null;
+  alt?: string | null; // photo : texte écrit sur l'image (accessibilité)
+  overlays?: MediaOverlay[] | null; // vidéo : textes affichés par-dessus (lib/overlayData.ts)
 };
 
 function parseMedia(value: unknown): MediaItem[] {
@@ -64,7 +67,10 @@ function parseMedia(value: unknown): MediaItem[] {
     if (!raw || typeof raw !== "object") return [];
     const item = raw as Record<string, unknown>;
     if ((item.type !== "image" && item.type !== "video") || typeof item.url !== "string" || !item.url) return [];
-    if (item.type === "image") return [{ type: "image", url: item.url }];
+    if (item.type === "image") {
+      const alt = typeof item.alt === "string" ? item.alt.slice(0, 1300) : "";
+      return [{ type: "image", url: item.url, ...(alt ? { alt } : {}) }];
+    }
     return [
       {
         type: "video",
@@ -72,6 +78,7 @@ function parseMedia(value: unknown): MediaItem[] {
         poster: typeof item.poster === "string" && item.poster ? item.poster : null,
         duration_s: typeof item.duration_s === "number" ? item.duration_s : null,
         framing: parseFraming(item.framing),
+        overlays: parseOverlays(item.overlays),
       },
     ];
   });
@@ -289,10 +296,15 @@ export async function compressPostImage(file: Blob): Promise<Blob> {
 
 // Photo recadrée au format 4:5 depuis l'ORIGINAL (orientation EXIF respectée) : 1638 × 2048 au maximum, jamais
 // agrandie au-delà de la résolution d'origine, JPEG 0,88 (lib/framing.ts)
-export async function renderFramedPhoto(original: Blob, framing: Framing): Promise<Blob> {
+// overlay : dessin supplémentaire par-dessus (texte de l'éditeur), à la taille réelle du cadre W × H
+export async function renderFramedPhoto(
+  original: Blob,
+  framing: Framing,
+  overlay?: (ctx: CanvasRenderingContext2D, W: number, H: number) => Promise<void>
+): Promise<Blob> {
   const bitmap = await decodeImage(original);
   try {
-    return await renderFramedImage(bitmap, framing, { drawScaled, encode: encodeJpeg });
+    return await renderFramedImage(bitmap, framing, { drawScaled, encode: encodeJpeg, overlay });
   } finally {
     bitmap.close();
   }

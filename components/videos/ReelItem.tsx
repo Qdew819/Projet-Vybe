@@ -7,12 +7,15 @@ import Avatar from "../Avatar";
 import ConfirmDialog from "../ConfirmDialog";
 import ExpandableText from "../ExpandableText";
 import FramedBackground from "../FramedBackground";
+import TextOverlayLayer from "../TextOverlayLayer";
+import { fromOverlays, textAlt } from "../../lib/overlayData";
 import MusicCredit from "../music/MusicCredit";
 import { PostMenu } from "../PostCard";
 import ReportDialog, { type ReportReason } from "../ReportDialog";
 import ShareButton from "../ShareButton";
 import { formatEventDate } from "../../lib/events";
 import { framedMediaStyle, type Framing } from "../../lib/framing";
+import type { MediaOverlay } from "../../lib/overlayData";
 import { followUser, type FollowStatus } from "../../lib/follows";
 import { useLanguage, useT } from "../../lib/i18n";
 import { deletePost, postMedia, setLike, type MediaItem, type PostRow, type PostStats } from "../../lib/posts";
@@ -400,13 +403,15 @@ function LiveReel({
       >
         {videos.map((item, index) => {
           const fit = fits[index] ?? "cover";
-          const framed = item.framing?.aspect ? item.framing : null;
-          const framedStyle = framed ? framedMediaStyle(framed, framed.aspect ?? 1) : undefined;
+          // Cadrage ou textes : la vidéo s'affiche dans un cadre 4:5 centré (mêmes positions que dans l'éditeur)
+          const framed = item.framing?.aspect ? item.framing : item.overlays ? { mode: "fill" as const, scale: 1, x: 0, y: 0, background: "black" as const } : null;
+          const written = textAlt(item.overlays);
+          const framedStyle = framed?.aspect ? framedMediaStyle(framed, framed.aspect) : undefined;
           return (
             <div key={`${index}-${item.url}`} className="relative h-full w-full shrink-0 snap-center snap-always">
               {framed ? (
                 // Cadrage choisi dans l'éditeur de /publier (sans réencodage) : cadre 4:5 centré
-                <FramedBox framing={framed} poster={item.poster ?? null}>
+                <FramedBox framing={framed} poster={item.poster ?? null} overlays={item.overlays ?? null}>
                   <video
                     ref={(element) => {
                       videoRefs.current[index] = element;
@@ -415,6 +420,7 @@ function LiveReel({
                     poster={item.poster ?? undefined}
                     preload={index === current ? preload : active && Math.abs(index - current) === 1 ? "metadata" : "none"}
                     crossOrigin="anonymous"
+                    aria-label={written ? `${t("carousel.videoOf").replace("{n}", String(index + 1)).replace("{total}", String(videos.length))} : ${written}` : undefined}
                     playsInline
                     muted
                     loop
@@ -440,6 +446,7 @@ function LiveReel({
                   poster={item.poster ?? undefined}
                   preload={index === current ? preload : active && Math.abs(index - current) === 1 ? "metadata" : "none"}
                   crossOrigin="anonymous"
+                  aria-label={written ? `${t("carousel.videoOf").replace("{n}", String(index + 1)).replace("{total}", String(videos.length))} : ${written}` : undefined}
                   playsInline
                   muted
                   loop
@@ -746,12 +753,23 @@ function LiveReel({
 }
 
 // Cadre 4:5 centré dans l'écran du fil (vidéo ou affiche recadrée), fond noir ou flou selon le cadrage
-function FramedBox({ framing, poster, children }: { framing: Framing; poster: string | null; children: ReactNode }) {
+function FramedBox({
+  framing,
+  poster,
+  overlays = null,
+  children,
+}: {
+  framing: Framing;
+  poster: string | null;
+  overlays?: MediaOverlay[] | null;
+  children: ReactNode;
+}) {
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
       <div className="relative aspect-[4/5] w-[min(100%,calc(100dvh*0.8))] overflow-hidden bg-black">
         <FramedBackground framing={framing} poster={poster} />
         {children}
+        {overlays && <TextOverlayLayer blocks={fromOverlays(overlays)} />}
       </div>
     </div>
   );

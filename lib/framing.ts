@@ -111,6 +111,7 @@ export async function renderFramedImage(
   helpers: {
     drawScaled: (bitmap: ImageBitmap, width: number, height: number) => HTMLCanvasElement;
     encode: (canvas: HTMLCanvasElement, quality: number) => Promise<Blob>;
+    overlay?: (ctx: CanvasRenderingContext2D, W: number, H: number) => Promise<void>;
   }
 ): Promise<Blob> {
   const aspect = bitmap.width / bitmap.height;
@@ -136,5 +137,7 @@ export async function renderFramedImage(
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(scaled, cx - mw / 2, cy - mh / 2, mw, mh);
+  // Texte : dessiné à la résolution réelle de l'image finale (net, même mise en page que l'aperçu)
+  if (helpers.overlay) await helpers.overlay(ctx, W, H);
   return helpers.encode(canvas, OUTPUT_QUALITY);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { PlayIcon } from "./home/MediaThumb";
 import FramedBackground from "./FramedBackground";
 import { PostSoundContext } from "./PostSoundContext";
@@ -48,6 +48,7 @@ export default function VideoPlayer({
   views,
   frame = false,
   framing = null,
+  overlay = null,
 }: {
   postId: string;
   src: string;
@@ -56,6 +57,7 @@ export default function VideoPlayer({
   views?: string; // « 128 vues », déjà formaté
   frame?: boolean;
   framing?: Framing | null; // cadrage choisi dans l'éditeur de /publier (mode cadre seulement)
+  overlay?: ReactNode; // textes par-dessus la vidéo, dans le même conteneur que le cadrage (sans bloquer les gestes)
 }) {
   const t = useT();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -216,6 +218,7 @@ export default function VideoPlayer({
             : "mx-auto block max-h-[70vh] min-h-48 w-full object-contain"
         }
       />
+      {overlay}
 
       {failed ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 px-4 text-center text-white">
